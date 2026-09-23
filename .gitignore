@@ -1,0 +1,13 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+
+# IDE
+.idea/
+*.iml
