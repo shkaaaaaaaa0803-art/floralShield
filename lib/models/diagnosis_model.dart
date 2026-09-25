@@ -1,3 +1,5 @@
+enum AudienceMode { homeGardener, farmer }
+
 class DiagnosisModel {
   final String plantName;
   final bool isHealthy;
@@ -8,6 +10,13 @@ class DiagnosisModel {
   final List<String> symptoms;
   final List<String> treatment;
   final List<String> prevention;
+  // Audience-specific advice. May be empty (e.g. demo samples, older
+  // cached results, or fallback/error states) -- the UI falls back to
+  // the general `treatment`/`prevention` above when these are empty.
+  final List<String> treatmentHomeGardener;
+  final List<String> preventionHomeGardener;
+  final List<String> treatmentFarmer;
+  final List<String> preventionFarmer;
   final bool isPlant; // true if the image shows a plant/vegetable/flower
   final bool isSupportedCrop; // true if it belongs to supported target crops
   final double regionX; // 0.0-1.0, normalized center X of affected area
@@ -25,6 +34,10 @@ class DiagnosisModel {
     required this.symptoms,
     required this.treatment,
     required this.prevention,
+    this.treatmentHomeGardener = const [],
+    this.preventionHomeGardener = const [],
+    this.treatmentFarmer = const [],
+    this.preventionFarmer = const [],
     this.isPlant = true,
     this.isSupportedCrop = true,
     this.regionX = 0.5,
@@ -32,6 +45,21 @@ class DiagnosisModel {
     this.regionRadius = 0.3,
     this.rawResponse = '',
   });
+
+  /// Treatment steps for the given audience, falling back to the general
+  /// [treatment] list if the audience-specific one wasn't populated
+  /// (e.g. an older cached scan, or a fallback/error response).
+  List<String> treatmentFor(AudienceMode mode) {
+    final specific = mode == AudienceMode.farmer ? treatmentFarmer : treatmentHomeGardener;
+    return specific.isNotEmpty ? specific : treatment;
+  }
+
+  /// Prevention tips for the given audience, falling back to the general
+  /// [prevention] list if the audience-specific one wasn't populated.
+  List<String> preventionFor(AudienceMode mode) {
+    final specific = mode == AudienceMode.farmer ? preventionFarmer : preventionHomeGardener;
+    return specific.isNotEmpty ? specific : prevention;
+  }
 
   factory DiagnosisModel.fromJson(Map<String, dynamic> json) {
     double parseDouble(dynamic v, double fallback) {
@@ -65,6 +93,10 @@ class DiagnosisModel {
       symptoms: parseList(json['symptoms']),
       treatment: parseList(json['treatment']),
       prevention: parseList(json['prevention']),
+      treatmentHomeGardener: parseList(json['treatment_home']),
+      preventionHomeGardener: parseList(json['prevention_home']),
+      treatmentFarmer: parseList(json['treatment_farmer']),
+      preventionFarmer: parseList(json['prevention_farmer']),
       isPlant: json['is_plant'] is bool ? json['is_plant'] : (json['is_plant']?.toString().toLowerCase() != 'false'),
       isSupportedCrop: json['is_supported_crop'] is bool ? json['is_supported_crop'] : (json['is_supported_crop']?.toString().toLowerCase() != 'false'),
       regionX: parseDouble(region?['x'], 0.5),
@@ -84,6 +116,10 @@ class DiagnosisModel {
       'symptoms': symptoms,
       'treatment': treatment,
       'prevention': prevention,
+      'treatment_home': treatmentHomeGardener,
+      'prevention_home': preventionHomeGardener,
+      'treatment_farmer': treatmentFarmer,
+      'prevention_farmer': preventionFarmer,
       'is_plant': isPlant,
       'is_supported_crop': isSupportedCrop,
       'affected_region': {'x': regionX, 'y': regionY, 'radius': regionRadius},

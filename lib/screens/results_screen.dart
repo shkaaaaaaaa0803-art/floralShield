@@ -24,6 +24,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   bool _isSpeaking = false;
   bool _showHeatmap = false;
   bool _isGeneratingPdf = false;
+  AudienceMode _audience = AudienceMode.homeGardener;
 
   void _shareDiagnosis(DiagnosisModel diagnosis) {
     final buffer = StringBuffer();
@@ -305,21 +306,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         title: 'Symptoms',
                         items: diagnosis.symptoms,
                       ),
-                    const SizedBox(height: 12),
-                    if (diagnosis.treatment.isNotEmpty)
+                    const SizedBox(height: 16),
+
+                    // Home Gardener / Farmer advice toggle -- Treatment and
+                    // Prevention below are tailored to whichever is selected
+                    // (low-chemical home advice vs. field-scale farmer
+                    // advice with pesticide/fungicide classes).
+                    Text('Tailor advice for:', style: AppTextStyles.body(size: 12, color: AppColors.textSecondary)),
+                    const SizedBox(height: 8),
+                    _buildAudienceToggle(),
+                    const SizedBox(height: 16),
+
+                    if (diagnosis.treatmentFor(_audience).isNotEmpty)
                       _infoCard(
                         icon: Icons.healing_outlined,
                         iconColor: AppColors.neonGreen,
                         title: 'Treatment',
-                        items: diagnosis.treatment,
+                        items: diagnosis.treatmentFor(_audience),
                       ),
                     const SizedBox(height: 12),
-                    if (diagnosis.prevention.isNotEmpty)
+                    if (diagnosis.preventionFor(_audience).isNotEmpty)
                       _infoCard(
                         icon: Icons.shield_outlined,
                         iconColor: AppColors.textPrimary,
                         title: 'Prevention',
-                        items: diagnosis.prevention,
+                        items: diagnosis.preventionFor(_audience),
                       ),
                     const SizedBox(height: 20),
 
@@ -501,7 +512,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         final parts = <String>[
           diagnosis.plantName,
           if (!diagnosis.isHealthy && diagnosis.isSupportedCrop) diagnosis.diseaseName,
-          ...diagnosis.treatment,
+          ...diagnosis.treatmentFor(_audience),
         ];
         final speechText = parts.join('. ');
 
@@ -547,6 +558,64 @@ class _ResultsScreenState extends State<ResultsScreen> {
             weight: FontWeight.w600,
             color: active ? AppColors.neonGreen : AppColors.textSecondary,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAudienceToggle() {
+    return Row(
+      children: [
+        Expanded(
+          child: _audienceSegment(
+            label: 'Home Gardener',
+            icon: Icons.home_outlined,
+            mode: AudienceMode.homeGardener,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _audienceSegment(
+            label: 'Farmer',
+            icon: Icons.agriculture_outlined,
+            mode: AudienceMode.farmer,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _audienceSegment({
+    required String label,
+    required IconData icon,
+    required AudienceMode mode,
+  }) {
+    final bool active = _audience == mode;
+    return GestureDetector(
+      onTap: () => setState(() => _audience = mode),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? AppColors.neonGreen.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? AppColors.neonGreen : AppColors.glassBorder,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 15, color: active ? AppColors.neonGreen : AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppTextStyles.body(
+                size: 12,
+                weight: FontWeight.w600,
+                color: active ? AppColors.neonGreen : AppColors.textSecondary,
+              ),
+            ),
+          ],
         ),
       ),
     );

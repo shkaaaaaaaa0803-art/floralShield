@@ -9,8 +9,17 @@ import '../models/quick_check_result.dart';
 class GeminiService {
   late final GenerativeModel _model;
   late final GenerativeModel _chatModel;
+  late final GenerativeModel _quickCheckModel;
+  // Fallback models: gemini-3.6/3.7/3.8-flash have documented, ongoing
+  // capacity/overload issues (503 "high demand") reported widely on
+  // Google's own developer forum as of Sept 2026. Flash-Lite isn't
+  // implicated in those reports and normally has more headroom, so it's
+  // used as a second attempt when the primary model is overloaded.
+  late final GenerativeModel _modelFallback;
+  late final GenerativeModel _chatModelFallback;
+  late final GenerativeModel _quickCheckModelFallback;
 
-   GeminiService() {
+  GeminiService() {
     final String? apiKey = dotenv.env['GEMINI_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
       throw Exception('GEMINI_API_KEY not found. Check your .env file.');
@@ -46,6 +55,26 @@ class GeminiService {
         'symptoms': Schema.array(items: Schema.string()),
         'treatment': Schema.array(items: Schema.string()),
         'prevention': Schema.array(items: Schema.string()),
+        'treatment_home': Schema.array(
+          items: Schema.string(),
+          description:
+          "Treatment steps for a HOME GARDENER with a few potted or backyard plants: simple, low-cost, minimal/no chemical use (e.g. neem oil, insecticidal soap, pruning affected leaves, isolating the plant, hand-picking pests). Avoid naming industrial or restricted-use agricultural pesticides here.",
+        ),
+        'prevention_home': Schema.array(
+          items: Schema.string(),
+          description:
+          "Prevention tips for a HOME GARDENER: watering habits, sunlight/placement, spacing, cleaning tools, basic organic care suited to a house or small yard.",
+        ),
+        'treatment_farmer': Schema.array(
+          items: Schema.string(),
+          description:
+          "Treatment guidance for a FARMER managing this crop at field scale: relevant fungicide/pesticide/insecticide CLASSES or active-ingredient types (e.g. 'copper-based fungicide', 'systemic fungicide'), spray timing/interval guidance, and integrated pest management (IPM) practices. Do NOT include exact dosage amounts or mixing ratios -- the app has a separate dosage calculator for that. If healthy, give field-scale maintenance guidance instead.",
+        ),
+        'prevention_farmer': Schema.array(
+          items: Schema.string(),
+          description:
+          "Field-scale prevention for a FARMER: crop rotation, resistant/tolerant varieties, sanitation of field debris, planting density/spacing, irrigation scheduling, and monitoring practices.",
+        ),
         'affected_region': Schema.object(
           properties: {
             'x': Schema.number(),
@@ -66,11 +95,58 @@ class GeminiService {
         'symptoms',
         'treatment',
         'prevention',
+        'treatment_home',
+        'prevention_home',
+        'treatment_farmer',
+        'prevention_farmer',
+      ],
+    );
+
+    // Strict JSON schema for the Quick Check features (freshness, pet
+    // toxicity, soil texture). This is intentionally separate from the
+    // diagnosis `schema` above: it was previously sharing `_model`, whose
+    // responseSchema only knows about plant_name/disease_name/etc, which
+    // silently forced every quick-check answer into the wrong shape and
+    // made QuickCheckResult.fromJson() fall back to 'Unknown'/empty values.
+    final quickCheckSchema = Schema.object(
+      properties: {
+        'subject_name': Schema.string(
+          description:
+          "Name of the identified subject, e.g. 'Tomato', 'Aloe Vera', 'Sandy Loam'.",
+        ),
+        'is_valid_subject': Schema.boolean(
+          description:
+          "True if the image matches the expected subject type for this check (produce, plant, or soil). False otherwise.",
+        ),
+        'status_good': Schema.boolean(
+          description:
+          "True if fresh / safe for pets / suitable soil. False if spoiled / toxic / unsuitable.",
+        ),
+        'status_label': Schema.string(
+          description:
+          "Short status label, e.g. 'Fresh', 'Toxic to Pets', 'Sandy Loam'.",
+        ),
+        'score_percent': Schema.integer(
+          description: "0 to 100 confidence/quality score.",
+        ),
+        'details': Schema.array(items: Schema.string()),
+        'tips': Schema.array(items: Schema.string()),
+      },
+      requiredProperties: [
+        'subject_name',
+        'is_valid_subject',
+        'status_good',
+        'status_label',
+        'score_percent',
+        'details',
+        'tips',
       ],
     );
 
     _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      // gemini-1.5-flash was fully shut down; gemini-3.8-flash is the
+      // current stable, vision-capable model Google recommends as of 2026.
+      model: 'gemini-3.8-flash',
       apiKey: apiKey,
       generationConfig: GenerationConfig(
         temperature: 0.1,
@@ -80,10 +156,116 @@ class GeminiService {
     );
 
     _chatModel = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.8-flash',
       apiKey: apiKey,
       generationConfig: GenerationConfig(temperature: 0.6),
     );
+
+    _quickCheckModel = GenerativeModel(
+      model: 'gemini-3.8-flash',
+      apiKey: apiKey,
+      generationConfig: GenerationConfig(
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+        responseSchema: quickCheckSchema,
+      ),
+    );
+
+    _modelFallback = GenerativeModel(
+      model: 'gemini-3.5-flash-lite',
+      apiKey: apiKey,
+      generationConfig: GenerationConfig(
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+      ),
+    );
+
+    _chatModelFallback = GenerativeModel(
+      model: 'gemini-3.5-flash-lite',
+      apiKey: apiKey,
+      generationConfig: GenerationConfig(temperature: 0.6),
+    );
+
+    _quickCheckModelFallback = GenerativeModel(
+      model: 'gemini-3.5-flash-lite',
+      apiKey: apiKey,
+      generationConfig: GenerationConfig(
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+        responseSchema: quickCheckSchema,
+      ),
+    );
+  }
+
+  /// Calls [model.generateContent], automatically retrying a few times
+  /// with exponential backoff when the error looks transient (Google's
+  /// servers returning 503 "UNAVAILABLE / high demand" or 429 rate limits).
+  /// This is what actually protects the user from a single momentary
+  /// server hiccup surfacing as a scan failure.
+  Future<GenerateContentResponse> _generateWithRetry(
+      GenerativeModel model,
+      List<Content> content, {
+        int maxAttempts = 3,
+        GenerativeModel? fallbackModel,
+      }) async {
+    Object lastError = Exception('generateContent failed.');
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await model.generateContent(content);
+      } catch (e) {
+        lastError = e;
+        final bool isTransient = _isTransientError(e);
+        if (!isTransient) rethrow;
+        if (attempt < maxAttempts) {
+          // Backoff: ~800ms, 1.6s, 3.2s before the next attempt.
+          await Future.delayed(Duration(milliseconds: 800 * (1 << (attempt - 1))));
+        }
+      }
+    }
+
+    // Primary model's retries are exhausted. If a fallback model was
+    // given, try it once before giving up entirely -- this is what
+    // actually helps when the primary model is congested Google-side
+    // rather than down entirely.
+    if (fallbackModel != null) {
+      try {
+        return await fallbackModel.generateContent(content);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw lastError;
+  }
+
+  bool _isTransientError(Object e) {
+    final String msg = e.toString().toLowerCase();
+    return msg.contains('503') ||
+        msg.contains('unavailable') ||
+        msg.contains('high demand') ||
+        msg.contains('overloaded') ||
+        msg.contains('429') ||
+        msg.contains('resource_exhausted');
+  }
+
+  /// Turns a raw exception into a short, human-readable message instead of
+  /// dumping a JSON error blob into the UI's "Symptoms" list.
+  String _friendlyErrorMessage(Object e) {
+    final String msg = e.toString().toLowerCase();
+    if (msg.contains('503') || msg.contains('unavailable') || msg.contains('high demand') || msg.contains('overloaded')) {
+      return "Gemini's servers are temporarily overloaded. We already retried automatically and tried a backup model — please wait a moment and scan again.";
+    }
+    if (msg.contains('429') || msg.contains('resource_exhausted')) {
+      return "You've hit the current AI request rate limit. Please wait about a minute before scanning again.";
+    }
+    if (msg.contains('api key') || msg.contains('api_key_invalid') || msg.contains('401') || msg.contains('403') || msg.contains('permission')) {
+      return 'There is a problem with the AI configuration (API key). Please contact support.';
+    }
+    if (msg.contains('socketexception') || msg.contains('network') || msg.contains('failed host lookup')) {
+      return 'No internet connection could be reached. Check your connection and try again.';
+    }
+    return 'Could not complete image analysis due to a network or response issue.';
   }
 
   DiagnosisModel _getFallbackForError([String? errorMsg]) {
@@ -123,6 +305,7 @@ CRITICAL INSTRUCTIONS:
 4. Provide a full diagnosis. If diseased, specify the disease name, symptoms, treatment, and prevention.
 5. If healthy, set 'is_healthy': true, 'disease_name': 'None', and provide general care/maintenance tips in the symptoms, treatment, and prevention fields.
 6. Never skip symptoms or treatment metrics for any biological plant subject.
+7. Always fill treatment_home/prevention_home (simple, low/no-chemical advice for a home gardener) AND treatment_farmer/prevention_farmer (field-scale advice with relevant pesticide/fungicide classes for a farmer, but no exact dosage amounts) -- these are two different audiences reading the same diagnosis, so tailor each rather than repeating the general treatment/prevention text.
 ''';
 
       final List<Part> parts = <Part>[TextPart(prompt), DataPart('image/jpeg', imageBytes)];
@@ -135,7 +318,7 @@ CRITICAL INSTRUCTIONS:
       }
 
       final List<Content> content = [Content.multi(parts)];
-      final GenerateContentResponse response = await _model.generateContent(content);
+      final GenerateContentResponse response = await _generateWithRetry(_model, content, fallbackModel: _modelFallback);
       final String? text = response.text;
 
       if (text == null || text.isEmpty) {
@@ -156,7 +339,7 @@ CRITICAL INSTRUCTIONS:
     } catch (e) {
       // ignore: avoid_print
       print('GEMINI ANALYSIS ERROR: $e');
-      return _getFallbackForError(e.toString());
+      return _getFallbackForError(_friendlyErrorMessage(e));
     }
   }
 
@@ -170,14 +353,15 @@ CRITICAL INSTRUCTIONS:
 $promptPrefix $languageName.
 Keep the exact same JSON structure and field names. Only translate the
 text values (plant_name, disease_name, confidence, symptoms, treatment,
-prevention). Keep is_healthy, confidence_percent, severity_percent, is_plant, and is_supported_crop
+prevention, treatment_home, prevention_home, treatment_farmer, prevention_farmer).
+Keep is_healthy, confidence_percent, severity_percent, is_plant, and is_supported_crop
 unchanged. Respond ONLY with valid JSON, no extra text.
 
 \${jsonEncode(original.toJson())}
 ''';
 
     try {
-      final GenerateContentResponse response = await _model.generateContent([Content.text(prompt)]);
+      final GenerateContentResponse response = await _generateWithRetry(_model, [Content.text(prompt)], fallbackModel: _modelFallback);
       final String? text = response.text;
 
       if (text == null || text.isEmpty) {
@@ -251,7 +435,7 @@ If the image does not show a fruit or vegetable, set is_valid_subject to false a
         Content.multi([TextPart(prompt), DataPart('image/jpeg', imageBytes)])
       ];
 
-      final GenerateContentResponse response = await _model.generateContent(content);
+      final GenerateContentResponse response = await _generateWithRetry(_quickCheckModel, content, fallbackModel: _quickCheckModelFallback);
       final String? text = response.text;
       if (text == null || text.isEmpty) {
         return _getFreshnessFallback();
@@ -287,7 +471,7 @@ If the image does not show a plant, set is_valid_subject to false and identify w
         Content.multi([TextPart(prompt), DataPart('image/jpeg', imageBytes)])
       ];
 
-      final GenerateContentResponse response = await _model.generateContent(content);
+      final GenerateContentResponse response = await _generateWithRetry(_quickCheckModel, content, fallbackModel: _quickCheckModelFallback);
       final String? text = response.text;
       if (text == null || text.isEmpty) {
         return _getPetToxicityFallback();
@@ -323,7 +507,7 @@ If the image does not show soil at all, set is_valid_subject to false and identi
         Content.multi([TextPart(prompt), DataPart('image/jpeg', imageBytes)])
       ];
 
-      final GenerateContentResponse response = await _model.generateContent(content);
+      final GenerateContentResponse response = await _generateWithRetry(_quickCheckModel, content, fallbackModel: _quickCheckModelFallback);
       final String? text = response.text;
       if (text == null || text.isEmpty) {
         return _getSoilTextureFallback();
@@ -347,7 +531,7 @@ If the image does not show soil at all, set is_valid_subject to false and identi
   /// Continues a multi-turn farming conversation
   Future<String> continueChat(List<Content> history) async {
     try {
-      final GenerateContentResponse response = await _chatModel.generateContent(history);
+      final GenerateContentResponse response = await _generateWithRetry(_chatModel, history, fallbackModel: _chatModelFallback);
       return response.text ?? 'Sorry, I could not understand that. Please try again.';
     } catch (e) {
       return 'Sorry, something went wrong. Please check your internet connection and try again.';
