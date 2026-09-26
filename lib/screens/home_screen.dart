@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart' hide Path;
 import '../providers/scan_provider.dart';
 import '../providers/weather_provider.dart';
 import '../models/weather_model.dart';
+import '../models/scan_history_model.dart';
 import '../data/demo_samples.dart';
+import '../data/outbreak_data.dart';
 import '../theme/app_theme.dart';
 import 'capture_screen.dart';
 import 'dosage_calculator_screen.dart';
@@ -23,28 +27,77 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  List<OutbreakZone> _nearbyOutbreaks = [];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<WeatherProvider>().loadWeather();
+      context.read<ScanProvider>().loadHistory();
     });
+    _loadNearbyOutbreaks();
+  }
+
+  Future<void> _loadNearbyOutbreaks() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+      );
+      final zones = OutbreakData.sampleZones(LatLng(position.latitude, position.longitude));
+      if (mounted) {
+        setState(() => _nearbyOutbreaks = zones);
+      }
+    } catch (_) {
+      // Silent - best-effort highlight
+    }
   }
 
   void _comingSoon(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$feature — coming soon'),
-        backgroundColor: AppColors.bgDark2,
+        content: Text('$feature — coming soon', style: const TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.textPrimary,
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Color _confidenceColor(String label) {
+    switch (label.toLowerCase()) {
+      case 'high':
+        return AppColors.neonGreen;
+      case 'medium':
+        return AppColors.neonAmber;
+      default:
+        return AppColors.neonRed;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ScanProvider>(
       builder: (context, provider, _) {
+        final alertBanner = _buildOutbreakAlertBanner(context);
         return Scaffold(
           extendBody: true,
           body: Container(
@@ -55,144 +108,88 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildHeader(provider),
+                    _buildHeader(context, provider),
                     const SizedBox(height: 18),
+                    _buildKrishiSaathiCard(context),
+                    const SizedBox(height: 16),
                     _buildClimateCard(),
-                    const SizedBox(height: 16),
-                    _buildActionGrid(context, provider),
-                    const SizedBox(height: 16),
-                    _buildOutbreakCard(),
+                    if (alertBanner != null) ...[
+                      const SizedBox(height: 16),
+                      alertBanner,
+                    ],
                     const SizedBox(height: 20),
-                    Text('Home & Kitchen Tools', style: AppTextStyles.heading(size: 15)),
+                    Text('Diagnostic Tools & Modules', style: AppTextStyles.heading(size: 15)),
                     const SizedBox(height: 2),
-                    Text(
-                      'Quick checks for everyday plant & produce care',
-                      style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                    const Text(
+                      'Everything you need for plant, produce & farm health',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),
-                    _buildToolsGrid(context),
+                    _buildModulesGrid(context, provider),
+                    const SizedBox(height: 20),
+                    _buildRecentScans(context, provider),
                   ],
                 ),
               ),
             ),
           ),
           bottomNavigationBar: _buildBottomNav(context),
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-          floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 80),
-            child: FloatingActionButton(
-              backgroundColor: AppColors.neonGreen,
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const VoiceAssistantScreen()),
-              ),
-              child: const Icon(Icons.mic, color: AppColors.bgDark),
-            ),
-          ),
         );
       },
     );
   }
 
-  Widget _buildToolsGrid(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.7,
-      children: [
-        _toolTile(
-          context,
-          icon: Icons.eco_outlined,
-          color: AppColors.neonGreen,
-          label: 'Freshness\nScanner',
-          mode: QuickCheckMode.freshness,
-        ),
-        _toolTile(
-          context,
-          icon: Icons.pets_outlined,
-          color: AppColors.neonAmber,
-          label: 'Pet Toxicity\nChecker',
-          mode: QuickCheckMode.petToxicity,
-        ),
-        _toolTile(
-          context,
-          icon: Icons.terrain_outlined,
-          color: AppColors.accentTeal,
-          label: 'Soil Texture\nAnalysis',
-          mode: QuickCheckMode.soilTexture,
-        ),
-        _toolTile(
-          context,
-          icon: Icons.local_florist_outlined,
-          color: AppColors.neonGreenBright,
-          label: 'Plant\nIdentifier',
-          mode: QuickCheckMode.plantId,
-        ),
-      ],
-    );
-  }
-
-  Widget _toolTile(
-      BuildContext context, {
-        required IconData icon,
-        required Color color,
-        required String label,
-        required QuickCheckMode mode,
-      }) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => QuickCheckScreen(mode: mode)),
-      ),
-      child: GlassCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 8),
-            Text(label, style: AppTextStyles.body(size: 12, weight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(ScanProvider provider) {
+  Widget _buildHeader(BuildContext context, ScanProvider provider) {
+    final hasAlert = _nearbyOutbreaks.any((z) => z.severity == OutbreakSeverity.high);
     return Row(
       children: [
         Container(
           width: 38,
           height: 38,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.neonGreen.withOpacity(0.28), AppColors.neonGreen.withOpacity(0.08)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.neonGreen.withOpacity(0.5)),
-          ),
-          child: const Icon(Icons.shield_outlined, color: AppColors.neonGreen, size: 19),
+          decoration: const BoxDecoration(color: AppColors.neonGreen, shape: BoxShape.circle),
+          child: const Icon(Icons.shield_outlined, color: Colors.white, size: 19),
         ),
         const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('PlantIQ', style: AppTextStyles.heading(size: 19)),
-            Text('AI plant & produce care', style: AppTextStyles.body(size: 10, color: AppColors.textSecondary)),
+            Text('FloraShield AI', style: AppTextStyles.heading(size: 18)),
+            Text('Dashboard', style: AppTextStyles.body(size: 10, color: AppColors.textSecondary)),
           ],
         ),
         const Spacer(),
-        Text('Demo Mode', style: AppTextStyles.body(size: 12, color: AppColors.textSecondary)),
-        const SizedBox(width: 6),
+        Text('Demo', style: AppTextStyles.body(size: 11, color: AppColors.textSecondary)),
+        const SizedBox(width: 4),
         Switch(
           value: provider.isDemoMode,
           onChanged: (v) => provider.toggleDemoMode(v),
-          activeColor: AppColors.neonGreen,
+          activeThumbColor: AppColors.neonGreen,
         ),
-        const SizedBox(width: 4),
+        GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const OutbreakMapScreen()),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined, color: AppColors.textSecondary, size: 22),
+                if (hasAlert)
+                  Positioned(
+                    right: -1,
+                    top: -1,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(color: AppColors.neonRed, shape: BoxShape.circle),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
         GestureDetector(
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -200,6 +197,86 @@ class _HomeScreenState extends State<HomeScreen> {
           child: const Icon(Icons.settings_outlined, color: AppColors.textSecondary, size: 20),
         ),
       ],
+    );
+  }
+
+  Widget _buildKrishiSaathiCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const VoiceAssistantScreen()),
+      ),
+      child: GlassCard(
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(color: AppColors.neonGreen, shape: BoxShape.circle),
+              child: const Icon(Icons.mic, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Krishi Saathi AI', style: AppTextStyles.heading(size: 15)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Ask a farming question, by voice or text',
+                    style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, color: AppColors.textSecondary, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget? _buildOutbreakAlertBanner(BuildContext context) {
+    final highSeverity = _nearbyOutbreaks.where((z) => z.severity == OutbreakSeverity.high).toList()
+      ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+    if (highSeverity.isEmpty) return null;
+    final zone = highSeverity.first;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const OutbreakMapScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.neonRed.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.neonRed.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: AppColors.neonRed, size: 18),
+                const SizedBox(width: 8),
+                Text('NEARBY OUTBREAK ALERT', style: AppTextStyles.label(size: 10, color: AppColors.neonRed)),
+                const Spacer(),
+                const Text('Sample data', style: TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${zone.diseaseName} reported ${zone.distanceKm.toStringAsFixed(1)}km away',
+              style: AppTextStyles.heading(size: 15, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${zone.reportedCases} cases affecting ${zone.cropType} nearby. Tap to view the outbreak map.',
+              style: AppTextStyles.body(size: 12, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -237,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.03),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -289,11 +366,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (weatherProvider.status == WeatherStatus.error)
                     GestureDetector(
                       onTap: () => weatherProvider.loadWeather(),
-                      child: Row(
+                      child: const Row(
                         children: [
                           Icon(Icons.refresh, size: 14, color: AppColors.neonAmber),
                           const SizedBox(width: 4),
-                          Text('Retry', style: AppTextStyles.body(size: 12, color: AppColors.neonAmber)),
+                          Text('Retry', style: TextStyle(fontSize: 12, color: AppColors.neonAmber)),
                         ],
                       ),
                     ),
@@ -351,7 +428,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -377,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -421,133 +498,187 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionGrid(BuildContext context, ScanProvider provider) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildModulesGrid(BuildContext context, ScanProvider provider) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 0.80,
       children: [
-        _buildScanHero(context, provider),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 0.95,
-          children: [
-            _actionButtonCompact(
-              icon: Icons.local_fire_department_outlined,
-              label: 'Risk Heatmap',
-              color: AppColors.neonAmber,
-              onTap: () => _comingSoon('Risk Heatmap'),
-            ),
-            _actionButtonCompact(
-              icon: Icons.calculate_outlined,
-              label: 'Dosage Calc',
-              color: AppColors.accentTeal,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DosageCalculatorScreen(
-                    diseaseName: 'General fungal treatment',
-                    isHealthy: false,
-                  ),
-                ),
+        _moduleTile(
+          context,
+          icon: Icons.camera_alt_outlined,
+          iconColor: AppColors.neonGreen,
+          title: 'Crop Disease Scan',
+          description: 'Diagnose disease from a leaf photo',
+          actionLabel: 'Launch Scan',
+          onTap: () {
+            if (provider.isDemoMode) {
+              _showDemoSamplePicker(context, provider);
+            } else {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CaptureScreen()));
+            }
+          },
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.map_outlined,
+          iconColor: AppColors.neonRed,
+          title: 'Outbreak Map',
+          description: 'Nearby disease reports on a map',
+          actionLabel: 'Inspect Map',
+          badge: 'Sample Data',
+          badgeColor: AppColors.textSecondary,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OutbreakMapScreen())),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.terrain_outlined,
+          iconColor: AppColors.accentTeal,
+          title: 'Soil Texture',
+          description: 'Estimate soil texture from a photo',
+          actionLabel: 'Check Soil',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.soilTexture)),
+          ),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.calculate_outlined,
+          iconColor: AppColors.neonAmber,
+          title: 'Dosage Calc',
+          description: 'Tank volume & dilution math',
+          actionLabel: 'Calculate',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const DosageCalculatorScreen(
+                diseaseName: 'General fungal treatment',
+                isHealthy: false,
               ),
             ),
-            _actionButtonCompact(
-              icon: Icons.chat_bubble_outline,
-              label: 'Expert Q&A',
-              color: AppColors.textPrimary,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ExpertConnectScreen()),
-              ),
-            ),
-          ],
+          ),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.eco_outlined,
+          iconColor: AppColors.neonGreen,
+          title: 'Freshness Scanner',
+          description: 'Check ripeness of produce',
+          actionLabel: 'Scan Produce',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.freshness)),
+          ),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.pets_outlined,
+          iconColor: AppColors.neonAmber,
+          title: 'Pet Toxicity',
+          description: 'Is this plant safe for pets?',
+          actionLabel: 'Check Plant',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.petToxicity)),
+          ),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.local_florist_outlined,
+          iconColor: AppColors.neonGreenBright,
+          title: 'Plant Identifier',
+          description: 'Identify any plant species',
+          actionLabel: 'Identify',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.plantId)),
+          ),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.chat_bubble_outline,
+          iconColor: AppColors.accentTeal,
+          title: 'Expert Q&A',
+          description: 'Find agri experts near you',
+          actionLabel: 'Find Expert',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ExpertConnectScreen())),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.airplanemode_active_outlined,
+          iconColor: AppColors.textSecondary,
+          title: 'Drone Waypoints',
+          description: 'KML export for spray drones',
+          actionLabel: 'Coming Soon',
+          badge: 'Soon',
+          badgeColor: AppColors.neonAmber,
+          onTap: () => _comingSoon('Drone Flight Waypoints'),
+        ),
+        _moduleTile(
+          context,
+          icon: Icons.shield_outlined,
+          iconColor: AppColors.textSecondary,
+          title: 'Insurance Claim',
+          description: 'Generate a geo-tagged loss PDF',
+          actionLabel: 'Coming Soon',
+          badge: 'Soon',
+          badgeColor: AppColors.neonAmber,
+          onTap: () => _comingSoon('Insurance Claim PDF'),
         ),
       ],
     );
   }
 
-  /// Prominent hero card for the primary "scan a leaf" action — this is
-  /// the app's main entry point, so it gets its own gradient-badged card
-  /// instead of sitting flat in the grid with the secondary actions.
-  Widget _buildScanHero(BuildContext context, ScanProvider provider) {
-    return GestureDetector(
-      onTap: () {
-        if (provider.isDemoMode) {
-          _showDemoSamplePicker(context, provider);
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CaptureScreen()),
-          );
-        }
-      },
-      child: GlassCard(
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.neonGreen, AppColors.neonGreenBright],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: AppColors.neonGreen.withOpacity(0.4), blurRadius: 16, spreadRadius: 1),
-                ],
-              ),
-              child: const Icon(Icons.eco, color: AppColors.bgDark, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Scan Leaf AI', style: AppTextStyles.heading(size: 16)),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Diagnose disease from a photo in seconds',
-                    style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.neonGreen.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.arrow_forward, color: AppColors.neonGreen, size: 18),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _actionButtonCompact({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  Widget _moduleTile(
+      BuildContext context, {
+        required IconData icon,
+        required Color iconColor,
+        required String title,
+        required String description,
+        required String actionLabel,
+        String? badge,
+        Color? badgeColor,
+        required VoidCallback onTap,
+      }) {
     return GestureDetector(
       onTap: onTap,
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(icon, color: iconColor, size: 18),
+                ),
+                const Spacer(),
+                if (badge != null) NeonPill(text: badge, color: badgeColor ?? AppColors.textSecondary),
+              ],
+            ),
+            const SizedBox(height: 10),
             Text(
-              label,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.body(size: 11, weight: FontWeight.w600),
+              title,
+              style: AppTextStyles.body(size: 13, weight: FontWeight.w700),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              description,
+              style: AppTextStyles.body(size: 10.5, color: AppColors.textSecondary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                Text(actionLabel, style: AppTextStyles.label(size: 10, color: iconColor)),
+                const SizedBox(width: 3),
+                Icon(Icons.arrow_forward, size: 11, color: iconColor),
+              ],
             ),
           ],
         ),
@@ -555,37 +686,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildOutbreakCard() {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const OutbreakMapScreen()),
-      ),
-      child: GlassCard(
-        child: Row(
+  Widget _buildRecentScans(BuildContext context, ScanProvider provider) {
+    final recent = provider.history.take(2).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppColors.neonRed.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.map_outlined, color: AppColors.neonRed),
+            Text('Recent Scans', style: AppTextStyles.heading(size: 15)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoryScreen())),
+              child: Text('View All', style: AppTextStyles.body(size: 12, color: AppColors.neonGreen, weight: FontWeight.w600)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Disease Outbreak Map', style: AppTextStyles.heading(size: 14)),
-                  const SizedBox(height: 2),
-                  Text('12 cases reported near you', style: AppTextStyles.body(size: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
+        const SizedBox(height: 10),
+        if (recent.isEmpty)
+          GlassCard(
+            child: Row(
+              children: [
+                const Icon(Icons.history, color: AppColors.textSecondary, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'No scans yet — try Crop Disease Scan above',
+                    style: AppTextStyles.body(size: 12, color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...recent.map((scan) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _recentScanRow(scan),
+          )),
+      ],
+    );
+  }
+
+  Widget _recentScanRow(ScanHistoryModel scan) {
+    return GlassCard(
+      child: Row(
+        children: [
+          Icon(
+            scan.isHealthy ? Icons.eco : Icons.bug_report_outlined,
+            color: scan.isHealthy ? AppColors.neonGreen : AppColors.neonRed,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  scan.isHealthy ? scan.plantName : scan.diseaseName,
+                  style: AppTextStyles.body(size: 13, weight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '${scan.plantName} • ${_timeAgo(scan.scannedAt)}',
+                  style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          NeonPill(text: scan.confidence, color: _confidenceColor(scan.confidence)),
+        ],
       ),
     );
   }
@@ -624,7 +793,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: AppColors.neonGreen,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.camera_alt, color: AppColors.bgDark),
+                    child: const Icon(Icons.camera_alt, color: Colors.white),
                   ),
                 );
               },
@@ -657,9 +826,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Simple sparkline/line-chart painter for the forecast row.
 class _SparklinePainter extends CustomPainter {
-  final List<double> values; // each 0.0 - 1.0
+  final List<double> values;
   final Color color;
 
   _SparklinePainter({required this.values, required this.color});

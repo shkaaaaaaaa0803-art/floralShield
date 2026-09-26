@@ -1,26 +1,41 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// "PlantIQ" premium dark glassmorphic design system.
-/// A deep emerald/aurora palette with soft neon glows, frosted glass
-/// surfaces and gradient-lit accents.
+/// "FloraShield AI" design system - light, card-based, badge-heavy.
+/// Matches the reference UI: a soft lavender-white canvas, crisp white
+/// cards on a subtle shadow (not a dark glassmorphic blur), a deep forest
+/// green as the primary accent, and flat colored badges instead of glow.
 class AppColors {
-  static const Color bgDark = Color(0xFF050B08); // deepest background
-  static const Color bgDark2 = Color(0xFF0A2E1F); // gradient end
-  static const Color bgDark3 = Color(0xFF0F3D2A); // gradient mid stop (adds depth)
+  // The app's actual screen background (soft lavender-grey canvas).
+  static const Color bgDark2 = Color(0xFFF3F4FA);
+  // Kept for API compatibility; a touch deeper than bgDark2, unused by
+  // default but available if a screen wants a secondary background tone.
+  static const Color bgDark3 = Color(0xFFEDEFF8);
 
-  static const Color glassFill = Color(0x22D8FFEF); // translucent card fill, mint-tinted
-  static const Color glassBorder = Color(0x3DBFFFDD); // translucent border
+  // NOTE: bgDark is white, not literally "dark" - see the design note
+  // above. It's the color drawn ON TOP of a solid accent fill (icons on
+  // a green badge, text on a green button), which needs to be white
+  // against this theme's dark, saturated green. Also doubles as a plain
+  // card-surface white where needed. The name is kept only so every
+  // screen that already references AppColors.bgDark keeps compiling.
+  static const Color bgDark = Color(0xFFFFFFFF);
 
-  static const Color neonGreen = Color(0xFF2EE6A6); // primary accent
-  static const Color neonGreenBright = Color(0xFF8FFFD1); // highlight for glows/gradients
-  static const Color neonAmber = Color(0xFFFFC15E); // warning/risk accent
-  static const Color neonRed = Color(0xFFFF6673); // severe/danger accent
-  static const Color accentTeal = Color(0xFF2DD4E8); // secondary aurora accent
+  // Surface and border tokens
+  static const Color surface = Color(0xFFFFFFFF);       // white card/button surface
+  static const Color surfaceMuted = Color(0xFFF1F6F3);  // light grey-green inner fill
+  static const Color border = Color(0xFFE3ECE6);        // hairline border color
 
-  static const Color textPrimary = Color(0xFFF7FBF9); // near-white
-  static const Color textSecondary = Color(0xFFA7C4B3); // muted green-grey
+  static const Color glassFill = Color(0xFFFFFFFF); // card surface
+  static const Color glassBorder = Color(0x14101815); // hairline card edge
+
+  static const Color neonGreen = Color(0xFF0E6B45); // primary accent (deep forest green)
+  static const Color neonGreenBright = Color(0xFF34A870); // lighter green for gradient accents
+  static const Color neonAmber = Color(0xFFF59E0B); // moderate risk / warning accent
+  static const Color neonRed = Color(0xFFDC2626); // high risk / danger accent
+  static const Color accentTeal = Color(0xFF0891B2); // secondary accent for variety
+
+  static const Color textPrimary = Color(0xFF182620); // near-black, headings
+  static const Color textSecondary = Color(0xFF6E7D74); // muted sage-grey, secondary text
 }
 
 class AppTextStyles {
@@ -28,7 +43,7 @@ class AppTextStyles {
     return GoogleFonts.spaceGrotesk(
       fontSize: size,
       fontWeight: weight ?? FontWeight.bold,
-      letterSpacing: -0.3,
+      letterSpacing: -0.2,
       height: 1.15,
       color: color ?? AppColors.textPrimary,
     );
@@ -47,7 +62,7 @@ class AppTextStyles {
     return GoogleFonts.inter(
       fontSize: size,
       fontWeight: FontWeight.w600,
-      letterSpacing: 1.1,
+      letterSpacing: 1.0,
       color: color ?? AppColors.textSecondary,
     );
   }
@@ -57,14 +72,14 @@ class AppTheme {
   static ThemeData get theme {
     return ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: AppColors.bgDark,
+      scaffoldBackgroundColor: AppColors.bgDark2,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.neonGreen,
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         primary: AppColors.neonGreen,
         secondary: AppColors.neonAmber,
         error: AppColors.neonRed,
-        surface: AppColors.bgDark2,
+        surface: AppColors.bgDark,
       ),
       textTheme: TextTheme(
         headlineLarge: AppTextStyles.heading(size: 28),
@@ -74,12 +89,11 @@ class AppTheme {
         bodyMedium: AppTextStyles.body(size: 14),
         labelSmall: AppTextStyles.label(),
       ),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: AppTextStyles.heading(size: 18),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -87,8 +101,8 @@ class AppTheme {
           foregroundColor: AppColors.bgDark,
           textStyle: AppTextStyles.body(size: 16, weight: FontWeight.w700),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          elevation: 8,
-          shadowColor: AppColors.neonGreen.withOpacity(0.45),
+          elevation: 1,
+          shadowColor: Colors.black.withOpacity(0.15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -97,8 +111,8 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
-          backgroundColor: Colors.white.withOpacity(0.03),
-          side: BorderSide(color: AppColors.glassBorder.withOpacity(0.9), width: 1.3),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: Color(0x1F101815), width: 1.3),
           textStyle: AppTextStyles.body(size: 16, weight: FontWeight.w600),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
@@ -109,22 +123,18 @@ class AppTheme {
     );
   }
 
-  /// The signature dark aurora-emerald gradient background used behind
-  /// every screen — three stops on a soft diagonal for extra depth,
-  /// instead of the old flat top-to-bottom two-tone.
+  /// The app's screen background - a flat, soft lavender-grey canvas that
+  /// lets the white cards read clearly against it via shadow, matching
+  /// the reference UI's flat light look (no dark gradient anymore).
   static BoxDecoration get backgroundGradient => const BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [AppColors.bgDark, AppColors.bgDark3, AppColors.bgDark2],
-      stops: [0.0, 0.55, 1.0],
-    ),
+    color: AppColors.bgDark2,
   );
 }
 
-/// A frosted-glass card with a soft ambient glow — the signature
-/// container style for this app. Backdrop blur + a faint gradient fill,
-/// a light mint-tinted border, and a subtle drop shadow for lift.
+/// A clean white elevated card - the signature container style for this
+/// app. Solid white surface, a hairline border, and a soft ambient
+/// shadow for lift (no backdrop blur - that was for the old dark
+/// glassmorphic look; this theme uses plain flat cards instead).
 class GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -141,50 +151,28 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = borderRadius ?? BorderRadius.circular(18);
     return Container(
+      width: double.infinity,
+      padding: padding,
       decoration: BoxDecoration(
+        color: AppColors.glassFill,
         borderRadius: radius,
+        border: Border.all(color: AppColors.glassBorder, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: AppColors.neonGreen.withOpacity(0.05),
-            blurRadius: 30,
-            spreadRadius: -6,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            width: double.infinity,
-            padding: padding,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withOpacity(0.06),
-                  AppColors.glassFill,
-                ],
-              ),
-              borderRadius: radius,
-              border: Border.all(color: AppColors.glassBorder, width: 1),
-            ),
-            child: child,
-          ),
-        ),
-      ),
+      child: child,
     );
   }
 }
 
-/// A neon status pill (e.g. "SEVERE", "HIGH FUNGAL RISK", "Demo Mode")
-/// with a soft gradient fill and a matching glow.
+/// A flat status pill (e.g. "SEVERE", "1 Active", "Sensor Fed") with a
+/// light tinted fill and matching colored text - no glow, just a clean
+/// flat badge.
 class NeonPill extends StatelessWidget {
   final String text;
   final Color color;
@@ -196,20 +184,9 @@ class NeonPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [color.withOpacity(0.30), color.withOpacity(0.12)],
-        ),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.65), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.30),
-            blurRadius: 12,
-            spreadRadius: 0.5,
-          ),
-        ],
+        border: Border.all(color: color.withOpacity(0.35), width: 1),
       ),
       child: Text(
         text.toUpperCase(),
@@ -219,8 +196,9 @@ class NeonPill extends StatelessWidget {
   }
 }
 
-/// Reusable circular gauge (used for confidence score, risk score, etc.)
-/// with a glowing arc instead of a flat one.
+/// Reusable circular gauge (confidence score, risk score, etc.) - a
+/// clean flat ring on a light grey track, matching the crisp gauge
+/// style in the reference UI (no neon glow).
 class CircularGauge extends StatelessWidget {
   final double fraction; // 0.0 - 1.0
   final Color color;
@@ -270,17 +248,10 @@ class _GaugePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
 
     final trackPaint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
+      ..color = Colors.black.withOpacity(0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
-
-    final glowPaint = Paint()
-      ..color = color.withOpacity(0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
 
     final valuePaint = Paint()
       ..color = color
@@ -294,7 +265,6 @@ class _GaugePainter extends CustomPainter {
 
     canvas.drawArc(rect, startAngle, sweepAngle, false, trackPaint);
     if (fraction > 0) {
-      canvas.drawArc(rect, startAngle, valueSweep, false, glowPaint);
       canvas.drawArc(rect, startAngle, valueSweep, false, valuePaint);
     }
   }

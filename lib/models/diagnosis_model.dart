@@ -10,9 +10,7 @@ class DiagnosisModel {
   final List<String> symptoms;
   final List<String> treatment;
   final List<String> prevention;
-  // Audience-specific advice. May be empty (e.g. demo samples, older
-  // cached results, or fallback/error states) -- the UI falls back to
-  // the general `treatment`/`prevention` above when these are empty.
+  // Audience-specific advice.
   final List<String> treatmentHomeGardener;
   final List<String> preventionHomeGardener;
   final List<String> treatmentFarmer;
@@ -47,8 +45,7 @@ class DiagnosisModel {
   });
 
   /// Treatment steps for the given audience, falling back to the general
-  /// [treatment] list if the audience-specific one wasn't populated
-  /// (e.g. an older cached scan, or a fallback/error response).
+  /// [treatment] list if the audience-specific one wasn't populated.
   List<String> treatmentFor(AudienceMode mode) {
     final specific = mode == AudienceMode.farmer ? treatmentFarmer : treatmentHomeGardener;
     return specific.isNotEmpty ? specific : treatment;
@@ -135,9 +132,9 @@ class DiagnosisModel {
       confidence: 'Low',
       confidencePercent: 0,
       severityPercent: 0,
-      symptoms: [],
-      treatment: [],
-      prevention: [],
+      symptoms: const [],
+      treatment: const [],
+      prevention: const [],
       isPlant: true,
       isSupportedCrop: false,
       rawResponse: rawText,
