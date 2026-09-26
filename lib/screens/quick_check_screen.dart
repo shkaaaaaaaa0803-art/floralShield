@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/quick_check_result.dart';
 import '../services/gemini_service.dart';
 import '../theme/app_theme.dart';
@@ -284,7 +285,7 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
 
   Widget _buildResultLayout() {
     if (_result == null) return const SizedBox.shrink();
-    
+
     if (!_result!.isValidSubject) {
       return GlassCard(
         child: Column(
@@ -307,6 +308,10 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
 
     if (widget.mode == QuickCheckMode.freshness) {
       return _buildFreshnessResults(_result!);
+    }
+
+    if (widget.mode == QuickCheckMode.petToxicity) {
+      return _buildPetToxicityResults(_result!);
     }
 
     // Default layout for other modes
@@ -424,6 +429,224 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 24),
+        _buildResetButton(),
+      ],
+    );
+  }
+
+  Future<void> _callVet() async {
+    final uri = Uri.parse('tel:');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Widget _buildPetToxicityResults(QuickCheckResult result) {
+    final bool isToxic = !result.statusGood;
+    final Color statusColor = isToxic ? AppColors.neonRed : AppColors.neonGreen;
+
+    // First `details` entry (when toxic) is the toxic principle per our
+    // prompt; the rest are symptoms. When safe, all details are shown as
+    // general notes.
+    final List<String> toxicPrinciple =
+    isToxic && result.details.isNotEmpty ? [result.details.first] : [];
+    final List<String> symptoms =
+    isToxic && result.details.length > 1 ? result.details.sublist(1) : result.details;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Big toxic/safe verdict banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: statusColor,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withValues(alpha: 0.3),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isToxic ? Icons.warning_amber_rounded : Icons.pets,
+                color: Colors.white,
+                size: 32,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      result.subjectName,
+                      style: AppTextStyles.body(size: 12, color: Colors.white.withValues(alpha: 0.85)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      result.statusLabel,
+                      style: AppTextStyles.heading(size: 18, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 2. Confidence + affected species row
+        Row(
+          children: [
+            Expanded(
+              child: GlassCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    CircularGauge(fraction: result.scorePercent / 100, color: statusColor, size: 54),
+                    const SizedBox(height: 8),
+                    Text('AI Confidence', style: AppTextStyles.body(size: 9, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GlassCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Icon(Icons.pets, size: 22, color: AppColors.textPrimary),
+                    const SizedBox(height: 8),
+                    Text('Dogs & Cats', style: AppTextStyles.body(size: 11, weight: FontWeight.w600)),
+                    Text('species checked', style: AppTextStyles.body(size: 9, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // 3. Toxic principle (only when toxic)
+        if (toxicPrinciple.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.neonRed.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.neonRed.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.science_outlined, color: AppColors.neonRed, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Toxic Principle', style: AppTextStyles.label(size: 10, color: AppColors.neonRed)),
+                      const SizedBox(height: 4),
+                      Text(toxicPrinciple.first, style: AppTextStyles.body(size: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // 4. Symptoms / notes
+        if (symptoms.isNotEmpty)
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isToxic ? 'Symptoms If Ingested' : 'Safety Notes',
+                  style: AppTextStyles.heading(size: 14),
+                ),
+                const SizedBox(height: 12),
+                ...symptoms.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        isToxic ? Icons.circle : Icons.check_circle_outline,
+                        size: isToxic ? 6 : 14,
+                        color: isToxic ? AppColors.neonRed : AppColors.neonGreen,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(s, style: AppTextStyles.body(size: 13))),
+                    ],
+                  ),
+                )),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // 5. What to do -- urgent styling if toxic, calm styling if safe
+        if (result.tips.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isToxic ? AppColors.neonRed.withValues(alpha: 0.08) : AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isToxic ? AppColors.neonRed.withValues(alpha: 0.25) : AppColors.border,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isToxic ? 'If Your Pet Ingests This' : 'General Precautions',
+                  style: AppTextStyles.heading(size: 14, color: isToxic ? AppColors.neonRed : AppColors.textPrimary),
+                ),
+                const SizedBox(height: 12),
+                ...result.tips.asMap().entries.map((entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${entry.key + 1}.',
+                        style: AppTextStyles.heading(size: 13, color: isToxic ? AppColors.neonRed : AppColors.neonGreen),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(entry.value, style: AppTextStyles.body(size: 13))),
+                    ],
+                  ),
+                )),
+                if (isToxic) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _callVet,
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.neonRed),
+                      icon: const Icon(Icons.call, size: 18),
+                      label: const Text('CALL YOUR VET NOW'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
         const SizedBox(height: 24),
         _buildResetButton(),
       ],
