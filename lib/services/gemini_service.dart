@@ -420,6 +420,18 @@ unchanged. Respond ONLY with valid JSON, no extra text.
     );
   }
 
+  QuickCheckResult _getPlantIdFallback() {
+    return QuickCheckResult(
+      subjectName: 'Identification Error',
+      statusGood: false,
+      statusLabel: 'Check Failed',
+      scorePercent: 0,
+      details: const ['Unable to identify this plant at this time.'],
+      tips: const ['Take a clear, well-lit photo showing the leaves and overall shape of the plant.'],
+      isValidSubject: false,
+    );
+  }
+
   /// Analyzes a photo of produce (fruit/vegetable) for freshness.
   Future<QuickCheckResult> checkFreshness(File imageFile) async {
     try {
@@ -525,6 +537,45 @@ If the image does not show soil at all, set is_valid_subject to false and identi
       return QuickCheckResult.fromJson(jsonDecode(cleanText) as Map<String, dynamic>);
     } catch (e) {
       return _getSoilTextureFallback();
+    }
+  }
+
+  /// Identifies a plant species from a photo and gives basic care tips.
+  Future<QuickCheckResult> identifyPlant(File imageFile) async {
+    try {
+      final Uint8List imageBytes = await imageFile.readAsBytes();
+
+      const String prompt = '''
+You are an expert botanist and houseplant specialist. Look at the image and identify the plant species shown (common name, and scientific name too if you can confidently determine it).
+Set status_good to true if you can identify the plant with reasonable confidence, and false if it cannot be confidently identified.
+Set status_label to a short one or two word category for the plant, e.g. "Succulent", "Houseplant", "Flowering Plant", "Herb", "Tree", or "Fern".
+In details, list the distinguishing features you observed (leaf shape, growth habit) and, if identifiable, its typical native origin and whether it is generally toxic to common pets.
+In tips, give brief care guidance: light needs, watering frequency, and a common care mistake to avoid.
+If the image does not show a plant at all, set is_valid_subject to false and identify what the image actually shows in subject_name instead.
+''';
+
+      final List<Content> content = [
+        Content.multi([TextPart(prompt), DataPart('image/jpeg', imageBytes)])
+      ];
+
+      final GenerateContentResponse response = await _generateWithRetry(_quickCheckModel, content, fallbackModel: _quickCheckModelFallback);
+      final String? text = response.text;
+      if (text == null || text.isEmpty) {
+        return _getPlantIdFallback();
+      }
+
+      String cleanText = text.trim();
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.substring(7);
+      }
+      if (cleanText.endsWith('```')) {
+        cleanText = cleanText.substring(0, cleanText.length - 3);
+      }
+      cleanText = cleanText.trim();
+
+      return QuickCheckResult.fromJson(jsonDecode(cleanText) as Map<String, dynamic>);
+    } catch (e) {
+      return _getPlantIdFallback();
     }
   }
 

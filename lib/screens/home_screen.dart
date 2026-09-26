@@ -64,70 +64,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildOutbreakCard(),
                     const SizedBox(height: 20),
                     Text('Home & Kitchen Tools', style: AppTextStyles.heading(size: 15)),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.freshness),
-                              ),
-                            ),
-                            child: GlassCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(Icons.eco_outlined, color: AppColors.neonGreen, size: 22),
-                                  const SizedBox(height: 8),
-                                  Text('Freshness\nScanner', style: AppTextStyles.body(size: 12, weight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.petToxicity),
-                              ),
-                            ),
-                            child: GlassCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(Icons.pets_outlined, color: AppColors.neonAmber, size: 22),
-                                  const SizedBox(height: 8),
-                                  Text('Pet Toxicity\nChecker', style: AppTextStyles.body(size: 12, weight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 2),
+                    Text(
+                      'Quick checks for everyday plant & produce care',
+                      style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const QuickCheckScreen(mode: QuickCheckMode.soilTexture),
-                        ),
-                      ),
-                      child: GlassCard(
-                        child: Row(
-                          children: [
-                            const Icon(Icons.terrain_outlined, color: AppColors.textPrimary, size: 22),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text('Soil Texture Analysis', style: AppTextStyles.body(size: 13, weight: FontWeight.w600)),
-                            ),
-                            const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 18),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _buildToolsGrid(context),
                   ],
                 ),
               ),
@@ -150,21 +93,97 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildToolsGrid(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.7,
+      children: [
+        _toolTile(
+          context,
+          icon: Icons.eco_outlined,
+          color: AppColors.neonGreen,
+          label: 'Freshness\nScanner',
+          mode: QuickCheckMode.freshness,
+        ),
+        _toolTile(
+          context,
+          icon: Icons.pets_outlined,
+          color: AppColors.neonAmber,
+          label: 'Pet Toxicity\nChecker',
+          mode: QuickCheckMode.petToxicity,
+        ),
+        _toolTile(
+          context,
+          icon: Icons.terrain_outlined,
+          color: AppColors.accentTeal,
+          label: 'Soil Texture\nAnalysis',
+          mode: QuickCheckMode.soilTexture,
+        ),
+        _toolTile(
+          context,
+          icon: Icons.local_florist_outlined,
+          color: AppColors.neonGreenBright,
+          label: 'Plant\nIdentifier',
+          mode: QuickCheckMode.plantId,
+        ),
+      ],
+    );
+  }
+
+  Widget _toolTile(
+      BuildContext context, {
+        required IconData icon,
+        required Color color,
+        required String label,
+        required QuickCheckMode mode,
+      }) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => QuickCheckScreen(mode: mode)),
+      ),
+      child: GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 8),
+            Text(label, style: AppTextStyles.body(size: 12, weight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(ScanProvider provider) {
     return Row(
       children: [
         Container(
-          width: 34,
-          height: 34,
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
-            color: AppColors.neonGreen.withOpacity(0.15),
+            gradient: LinearGradient(
+              colors: [AppColors.neonGreen.withOpacity(0.28), AppColors.neonGreen.withOpacity(0.08)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.neonGreen.withOpacity(0.5)),
           ),
-          child: const Icon(Icons.shield_outlined, color: AppColors.neonGreen, size: 18),
+          child: const Icon(Icons.shield_outlined, color: AppColors.neonGreen, size: 19),
         ),
         const SizedBox(width: 10),
-        Text('PlantIQ', style: AppTextStyles.heading(size: 19)),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('PlantIQ', style: AppTextStyles.heading(size: 19)),
+            Text('AI plant & produce care', style: AppTextStyles.body(size: 10, color: AppColors.textSecondary)),
+          ],
+        ),
         const Spacer(),
         Text('Demo Mode', style: AppTextStyles.body(size: 12, color: AppColors.textSecondary)),
         const SizedBox(width: 6),
@@ -403,60 +422,114 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionGrid(BuildContext context, ScanProvider provider) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 2.4,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _actionButton(
-          icon: Icons.eco_outlined,
-          label: 'Scan Leaf AI',
-          color: AppColors.neonGreen,
-          onTap: () {
-            if (provider.isDemoMode) {
-              _showDemoSamplePicker(context, provider);
-            } else {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CaptureScreen()),
-              );
-            }
-          },
-        ),
-        _actionButton(
-          icon: Icons.local_fire_department_outlined,
-          label: 'Risk Heatmap',
-          color: AppColors.neonAmber,
-          onTap: () => _comingSoon('Risk Heatmap'),
-        ),
-        _actionButton(
-          icon: Icons.calculate_outlined,
-          label: 'Dosage Calc',
-          color: AppColors.textPrimary,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const DosageCalculatorScreen(
-                diseaseName: 'General fungal treatment',
-                isHealthy: false,
+        _buildScanHero(context, provider),
+        const SizedBox(height: 12),
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 0.95,
+          children: [
+            _actionButtonCompact(
+              icon: Icons.local_fire_department_outlined,
+              label: 'Risk Heatmap',
+              color: AppColors.neonAmber,
+              onTap: () => _comingSoon('Risk Heatmap'),
+            ),
+            _actionButtonCompact(
+              icon: Icons.calculate_outlined,
+              label: 'Dosage Calc',
+              color: AppColors.accentTeal,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DosageCalculatorScreen(
+                    diseaseName: 'General fungal treatment',
+                    isHealthy: false,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        _actionButton(
-          icon: Icons.chat_bubble_outline,
-          label: 'Expert Q&A',
-          color: AppColors.textPrimary,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ExpertConnectScreen()),
-          ),
+            _actionButtonCompact(
+              icon: Icons.chat_bubble_outline,
+              label: 'Expert Q&A',
+              color: AppColors.textPrimary,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpertConnectScreen()),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _actionButton({
+  /// Prominent hero card for the primary "scan a leaf" action — this is
+  /// the app's main entry point, so it gets its own gradient-badged card
+  /// instead of sitting flat in the grid with the secondary actions.
+  Widget _buildScanHero(BuildContext context, ScanProvider provider) {
+    return GestureDetector(
+      onTap: () {
+        if (provider.isDemoMode) {
+          _showDemoSamplePicker(context, provider);
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const CaptureScreen()),
+          );
+        }
+      },
+      child: GlassCard(
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.neonGreen, AppColors.neonGreenBright],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: AppColors.neonGreen.withOpacity(0.4), blurRadius: 16, spreadRadius: 1),
+                ],
+              ),
+              child: const Icon(Icons.eco, color: AppColors.bgDark, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Scan Leaf AI', style: AppTextStyles.heading(size: 16)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Diagnose disease from a photo in seconds',
+                    style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.neonGreen.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.arrow_forward, color: AppColors.neonGreen, size: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButtonCompact({
     required IconData icon,
     required String label,
     required Color color,
@@ -465,16 +538,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: AppTextStyles.body(size: 13, weight: FontWeight.w600),
-              ),
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body(size: 11, weight: FontWeight.w600),
             ),
           ],
         ),

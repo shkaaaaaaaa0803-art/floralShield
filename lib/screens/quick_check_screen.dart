@@ -5,7 +5,7 @@ import '../models/quick_check_result.dart';
 import '../services/gemini_service.dart';
 import '../theme/app_theme.dart';
 
-enum QuickCheckMode { freshness, petToxicity, soilTexture }
+enum QuickCheckMode { freshness, petToxicity, soilTexture, plantId }
 
 class QuickCheckScreen extends StatefulWidget {
   final QuickCheckMode mode;
@@ -33,6 +33,8 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         return 'Pet Toxicity Checker';
       case QuickCheckMode.soilTexture:
         return 'Soil Texture Analysis';
+      case QuickCheckMode.plantId:
+        return 'Plant Identifier';
     }
   }
 
@@ -44,6 +46,8 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         return 'Photograph a plant to check if it\'s safe for your pets';
       case QuickCheckMode.soilTexture:
         return 'Photograph soil to estimate its texture and suitability';
+      case QuickCheckMode.plantId:
+        return 'Photograph any plant to identify its species and get care tips';
     }
   }
 
@@ -55,6 +59,8 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         return Icons.pets_outlined;
       case QuickCheckMode.soilTexture:
         return Icons.terrain_outlined;
+      case QuickCheckMode.plantId:
+        return Icons.local_florist_outlined;
     }
   }
 
@@ -86,6 +92,9 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
           break;
         case QuickCheckMode.soilTexture:
           result = await _geminiService.checkSoilTexture(_selectedImage!);
+          break;
+        case QuickCheckMode.plantId:
+          result = await _geminiService.identifyPlant(_selectedImage!);
           break;
       }
 
@@ -221,6 +230,21 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         return 'a plant';
       case QuickCheckMode.soilTexture:
         return 'soil';
+      case QuickCheckMode.plantId:
+        return 'a plant';
+    }
+  }
+
+  String get _tipsTitle {
+    switch (widget.mode) {
+      case QuickCheckMode.freshness:
+        return 'Storage Tips';
+      case QuickCheckMode.petToxicity:
+        return 'What To Do';
+      case QuickCheckMode.soilTexture:
+        return 'Recommendations';
+      case QuickCheckMode.plantId:
+        return 'Care Tips';
     }
   }
 
@@ -296,14 +320,7 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.mode == QuickCheckMode.freshness
-                      ? 'Storage Tips'
-                      : widget.mode == QuickCheckMode.petToxicity
-                      ? 'What To Do'
-                      : 'Recommendations',
-                  style: AppTextStyles.heading(size: 14),
-                ),
+                Text(_tipsTitle, style: AppTextStyles.heading(size: 14)),
                 const SizedBox(height: 10),
                 ...result.tips.map((t) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),

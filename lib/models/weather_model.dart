@@ -31,26 +31,38 @@ class WeatherModel {
 
   /// Calculates a 0.0-1.0 fungal/bacterial disease risk score.
   /// Based on general plant pathology guidance: most fungal pathogens
-  /// thrive between 20-30°C with humidity above 70%.
+  /// thrive around 25°C with humidity above ~90%.
+  ///
+  /// Both factors are smooth curves rather than fixed buckets. The old
+  /// bucketed version gave every temp in 20-30°C the same tempFactor and
+  /// every humidity >=80% the same humidityFactor, so any day in that
+  /// (very common, especially in humid regions) combination always came
+  /// out to *exactly* 1.0 - a multi-day forecast could look like a flat
+  /// line at 100% even though the underlying weather actually differed
+  /// day to day. These curves keep the same overall shape (peak risk
+  /// around 20-30°C / high humidity, tapering outside that) but vary
+  /// continuously, so 23°C isn't scored identically to 29°C.
   static double calculateRisk(double temp, double humidity) {
+    const peakTemp = 25.0;
+    final distance = (temp - peakTemp).abs();
     double tempFactor;
-    if (temp >= 20 && temp <= 30) {
-      tempFactor = 1.0; // ideal fungal growth range
-    } else if (temp >= 15 && temp < 20 || temp > 30 && temp <= 35) {
-      tempFactor = 0.6; // moderate risk range
+    if (distance <= 5) {
+      tempFactor = 1.0 - (distance / 5) * 0.15; // 20-30°C: 0.85 - 1.0
+    } else if (distance <= 10) {
+      tempFactor = 0.85 - ((distance - 5) / 5) * 0.35; // 15-20 / 30-35°C: 0.50 - 0.85
+    } else if (distance <= 15) {
+      tempFactor = 0.50 - ((distance - 10) / 5) * 0.30; // 10-15 / 35-40°C: 0.20 - 0.50
     } else {
-      tempFactor = 0.25; // low risk (too cold or too hot)
+      tempFactor = (0.20 - ((distance - 15) / 15) * 0.15).clamp(0.05, 0.20);
     }
 
     double humidityFactor;
-    if (humidity >= 80) {
+    if (humidity >= 90) {
       humidityFactor = 1.0;
-    } else if (humidity >= 60) {
-      humidityFactor = 0.65;
     } else if (humidity >= 40) {
-      humidityFactor = 0.35;
+      humidityFactor = 0.15 + ((humidity - 40) / 50) * 0.85; // 40-90%: 0.15 - 1.0
     } else {
-      humidityFactor = 0.15;
+      humidityFactor = (0.15 - ((40 - humidity) / 40) * 0.10).clamp(0.05, 0.15);
     }
 
     // Weighted combination - humidity matters slightly more for fungal risk
@@ -66,9 +78,16 @@ class WeatherModel {
 
   factory WeatherModel.fromApiData(
       Map<String, dynamic> currentData,
-      Map<String, dynamic> forecastData,
-      ) {
-    final cityName = currentData['name'] ?? 'Unknown';
+      Map<String, dynamic> forecastData, {
+        String? state,
+      }) {
+    final rawCityName = (currentData['name'] as String?) ?? 'Unknown';
+    // OpenWeatherMap's bundled city name can resolve to a small, unfamiliar
+    // locality rather than the city you'd recognize (common in densely
+    // named regions). Appending the state (from a best-effort reverse
+    // geocode - see WeatherService) gives enough context to place it even
+    // when the exact place name isn't one you know.
+    final cityName = (state != null && state.isNotEmpty) ? '$rawCityName, $state' : rawCityName;
     final temp = (currentData['main']['temp'] as num).toDouble();
     final humidity = (currentData['main']['humidity'] as num).toDouble();
     final risk = calculateRisk(temp, humidity);
