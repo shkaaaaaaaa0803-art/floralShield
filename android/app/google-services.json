@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "481617313791",
+    "project_id": "floralshieldai",
+    "storage_bucket": "floralshieldai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:481617313791:android:f534def0e0d662a4c1b1ca",
+        "android_client_info": {
+          "package_name": "com.example.plant_disease_detector"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJT9sykSTaIUg5x73Sed-A7hBw3S_cy3A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

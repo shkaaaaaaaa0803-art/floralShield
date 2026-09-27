@@ -1,9 +1,12 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
+import 'firebase_options.dart';
 import 'models/scan_history_model.dart';
+import 'providers/auth_provider.dart';
 import 'providers/scan_provider.dart';
 import 'providers/weather_provider.dart';
 import 'screens/splash_screen.dart';
@@ -15,6 +18,9 @@ Future<void> main() async {
 
   // Load environment variables (GEMINI_API_KEY)
   await dotenv.load(fileName: '.env');
+
+  // Initialize Firebase (auth + cloud sync)
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Initialize Hive for local storage
   await Hive.initFlutter();
@@ -33,11 +39,12 @@ class PlantDiseaseApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ScanProvider()),
         ChangeNotifierProvider(create: (_) => WeatherProvider()),
       ],
       child: MaterialApp(
-        title: 'PlantIQ',
+        title: 'FloraShield AI',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.theme,
         home: const SplashScreen(),
