@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/gemini_service.dart';
 import '../services/history_service.dart';
+import '../services/notification_service.dart';
 import '../models/diagnosis_model.dart';
 import '../models/scan_history_model.dart';
 import '../data/demo_samples.dart';
@@ -94,6 +96,16 @@ class ScanProvider extends ChangeNotifier {
         diagnosis: result,
       );
       await loadHistory();
+
+      if (!result.isHealthy) {
+        // Fire-and-forget: don't let a notification failure (e.g. denied
+        // permission) block showing the diagnosis to the user.
+        unawaited(NotificationService.showInstant(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          title: '⚠️ ${result.diseaseName} detected',
+          body: '${result.plantName} may need treatment — tap to view the full diagnosis.',
+        ));
+      }
 
       notifyListeners();
     } catch (e) {

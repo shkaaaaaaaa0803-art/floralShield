@@ -34,12 +34,34 @@ class NotificationService {
 
     await _plugin.periodicallyShow(
       _reminderId,
-      'PlantIQ 🌿',
+      'FloraShield AI 🌿',
       'Don\'t forget to check on your plants today!',
       RepeatInterval.daily,
       notificationDetails,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
+  }
+
+  /// Fires a single one-shot notification right away -- used for real-time
+  /// alerts (e.g. "disease detected", "toxic plant identified"), as
+  /// opposed to the recurring daily reminder above. Uses its own channel
+  /// so users can mute/configure it separately from the daily reminder in
+  /// their OS notification settings.
+  static Future<void> showInstant({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      'instant_alert_channel',
+      'Scan Alerts',
+      channelDescription: 'Real-time alerts from disease and toxicity scans',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const notificationDetails = NotificationDetails(android: androidDetails);
+
+    await _plugin.show(id, title, body, notificationDetails);
   }
 
   static Future<void> disableDailyReminder() async {

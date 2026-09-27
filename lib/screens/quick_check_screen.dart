@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/quick_check_result.dart';
 import '../services/gemini_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 
 enum QuickCheckMode { freshness, petToxicity, soilTexture, plantId }
@@ -103,6 +104,16 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         _result = result;
         _analyzing = false;
       });
+
+      if (widget.mode == QuickCheckMode.petToxicity &&
+          result.isValidSubject &&
+          !result.statusGood) {
+        NotificationService.showInstant(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          title: '🐾 Toxic plant identified',
+          body: '${result.subjectName} — ${result.statusLabel}. Tap to view what to do.',
+        );
+      }
     } catch (e) {
       setState(() {
         _error = 'Analysis service unavailable. Please check your connection.';

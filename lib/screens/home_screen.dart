@@ -11,6 +11,7 @@ import '../data/outbreak_data.dart';
 import '../theme/app_theme.dart';
 import 'capture_screen.dart';
 import 'dosage_calculator_screen.dart';
+import 'drone_export_screen.dart';
 import 'expert_connect_screen.dart';
 import 'history_screen.dart';
 import 'outbreak_map_screen.dart';
@@ -27,6 +28,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Best-effort, sample-data outbreak zones near the device - see
+  // _loadNearbyOutbreaks(). Empty until (and unless) that resolves.
   List<OutbreakZone> _nearbyOutbreaks = [];
 
   @override
@@ -39,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadNearbyOutbreaks();
   }
 
+  /// Best-effort only: reuses the same sample outbreak dataset the map
+  /// screen uses (see outbreak_data.dart - there's no real crowd-sourced
+  /// backend behind this yet). If location isn't available for any
+  /// reason, this just stays empty and the alert banner doesn't show -
+  /// it should never block the rest of the dashboard from loading.
   Future<void> _loadNearbyOutbreaks() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -53,14 +61,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+        desiredAccuracy: LocationAccuracy.low,
       );
       final zones = OutbreakData.sampleZones(LatLng(position.latitude, position.longitude));
       if (mounted) {
         setState(() => _nearbyOutbreaks = zones);
       }
     } catch (_) {
-      // Silent - best-effort highlight
+      // Silent - this is a best-effort dashboard highlight, not critical path.
     }
   }
 
@@ -120,9 +128,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 20),
                     Text('Diagnostic Tools & Modules', style: AppTextStyles.heading(size: 15)),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Everything you need for plant, produce & farm health',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),
                     _buildModulesGrid(context, provider),
@@ -147,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
           width: 38,
           height: 38,
           decoration: const BoxDecoration(color: AppColors.neonGreen, shape: BoxShape.circle),
-          child: const Icon(Icons.shield_outlined, color: Colors.white, size: 19),
+          child: const Icon(Icons.shield_outlined, color: AppColors.bgDark, size: 19),
         ),
         const SizedBox(width: 10),
         Column(
@@ -164,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Switch(
           value: provider.isDemoMode,
           onChanged: (v) => provider.toggleDemoMode(v),
-          activeThumbColor: AppColors.neonGreen,
+          activeColor: AppColors.neonGreen,
         ),
         GestureDetector(
           onTap: () => Navigator.of(context).push(
@@ -212,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 44,
               height: 44,
               decoration: const BoxDecoration(color: AppColors.neonGreen, shape: BoxShape.circle),
-              child: const Icon(Icons.mic, color: Colors.white, size: 20),
+              child: const Icon(Icons.mic, color: AppColors.bgDark, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -235,6 +243,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Returns null (nothing rendered) unless there's a genuine nearby
+  /// high-severity zone in the sample outbreak dataset - the banner only
+  /// shows up when there's something to show, and is clearly labelled as
+  /// sample data so it can't be mistaken for a real live alert.
   Widget? _buildOutbreakAlertBanner(BuildContext context) {
     final highSeverity = _nearbyOutbreaks.where((z) => z.severity == OutbreakSeverity.high).toList()
       ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
@@ -248,9 +260,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.neonRed.withValues(alpha: 0.08),
+          color: AppColors.neonRed.withOpacity(0.08),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.neonRed.withValues(alpha: 0.25)),
+          border: Border.all(color: AppColors.neonRed.withOpacity(0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 Text('NEARBY OUTBREAK ALERT', style: AppTextStyles.label(size: 10, color: AppColors.neonRed)),
                 const Spacer(),
-                const Text('Sample data', style: TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+                Text('Sample data', style: AppTextStyles.body(size: 9, color: AppColors.textSecondary)),
               ],
             ),
             const SizedBox(height: 8),
@@ -314,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.03),
+                          color: Colors.black.withOpacity(0.03),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -366,11 +378,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (weatherProvider.status == WeatherStatus.error)
                     GestureDetector(
                       onTap: () => weatherProvider.loadWeather(),
-                      child: const Row(
+                      child: Row(
                         children: [
                           Icon(Icons.refresh, size: 14, color: AppColors.neonAmber),
                           const SizedBox(width: 4),
-                          Text('Retry', style: TextStyle(fontSize: 12, color: AppColors.neonAmber)),
+                          Text('Retry', style: AppTextStyles.body(size: 12, color: AppColors.neonAmber)),
                         ],
                       ),
                     ),
@@ -428,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.03),
+        color: Colors.black.withOpacity(0.03),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -454,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.03),
+        color: Colors.black.withOpacity(0.03),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -605,13 +617,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _moduleTile(
           context,
           icon: Icons.airplanemode_active_outlined,
-          iconColor: AppColors.textSecondary,
+          iconColor: AppColors.accentTeal,
           title: 'Drone Waypoints',
           description: 'KML export for spray drones',
-          actionLabel: 'Coming Soon',
-          badge: 'Soon',
-          badgeColor: AppColors.neonAmber,
-          onTap: () => _comingSoon('Drone Flight Waypoints'),
+          actionLabel: 'Generate Path',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DroneExportScreen())),
         ),
         _moduleTile(
           context,
@@ -651,7 +661,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   width: 34,
                   height: 34,
-                  decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: iconColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
                   child: Icon(icon, color: iconColor, size: 18),
                 ),
                 const Spacer(),
@@ -793,7 +803,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: AppColors.neonGreen,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white),
+                    child: const Icon(Icons.camera_alt, color: AppColors.bgDark),
                   ),
                 );
               },
@@ -826,8 +836,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Simple sparkline/line-chart painter for the forecast row.
 class _SparklinePainter extends CustomPainter {
-  final List<double> values;
+  final List<double> values; // each 0.0 - 1.0
   final Color color;
 
   _SparklinePainter({required this.values, required this.color});
