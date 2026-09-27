@@ -362,73 +362,115 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
         ),
         const SizedBox(height: 16),
 
-        // 2. 3-Stat Metric Row
-        Row(
-          children: [
-            Expanded(child: _miniStat('Pesticides', 'LOW', Icons.science_outlined, AppColors.neonGreen)),
-            const SizedBox(width: 10),
-            Expanded(child: _miniStat('Wax/Coat', 'MINIMAL', Icons.layers_outlined, AppColors.accentTeal)),
-            const SizedBox(width: 10),
-            Expanded(child: _miniStat('Shelf Life', '4-5d', Icons.timer_outlined, AppColors.neonAmber)),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        // 3. Lab-Grade Residue Profile
-        GlassCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Lab-Grade Residue Profile', style: AppTextStyles.heading(size: 14)),
-              const SizedBox(height: 12),
-              _residueBar('Chlorpyrifos', 0.12, AppColors.neonGreen),
-              _residueBar('Fungicide Residue', 0.45, AppColors.neonAmber),
-              _residueBar('Nitrate Levels', 0.28, AppColors.neonGreen),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // 4. Pet Safety Alert
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.neonAmber.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.neonAmber.withValues(alpha: 0.2)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.pets, color: AppColors.neonAmber, size: 24),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Pet Safety Verification', style: AppTextStyles.heading(size: 14, color: AppColors.neonAmber)),
-                    const SizedBox(height: 2),
-                    Text('Safe for consumption in moderate quantities.', style: AppTextStyles.body(size: 11)),
-                  ],
+        // 2. 3-Stat Metric Row -- driven by the AI's stat_labels/stat_values,
+        // with a safe fallback if the model didn't return any.
+        if (result.statLabels.isNotEmpty)
+          Row(
+            children: List.generate(result.statLabels.length.clamp(0, 3), (i) {
+              final label = result.statLabels[i];
+              final value = i < result.statValues.length ? result.statValues[i] : '--';
+              final icons = [Icons.science_outlined, Icons.layers_outlined, Icons.timer_outlined];
+              final colors = [AppColors.neonGreen, AppColors.accentTeal, AppColors.neonAmber];
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < 2 ? 10 : 0),
+                  child: _miniStat(label, value, icons[i % icons.length], colors[i % colors.length]),
                 ),
-              ),
+              );
+            }),
+          )
+        else
+          Row(
+            children: [
+              Expanded(child: _miniStat('Confidence', '${result.scorePercent}%', Icons.verified_outlined, statusColor)),
             ],
           ),
-        ),
         const SizedBox(height: 16),
 
-        // 5. Kitchen Wash Protocol
-        GlassCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Kitchen Prep Protocol', style: AppTextStyles.heading(size: 14)),
-              const SizedBox(height: 12),
-              _stepItem(1, 'Rinse under cold running water for 60 seconds.'),
-              _stepItem(2, 'Use a salt or vinegar soak for deep residue removal.'),
-              _stepItem(3, 'Dry with a clean paper towel before refrigeration.'),
-            ],
+        // 3. Freshness Observations -- real visual observations from the
+        // AI, not fabricated lab-precision numbers.
+        if (result.details.isNotEmpty)
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Freshness Observations', style: AppTextStyles.heading(size: 14)),
+                const SizedBox(height: 12),
+                ...result.details.map((d) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: Icon(Icons.circle, size: 5, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(d, style: AppTextStyles.body(size: 13))),
+                    ],
+                  ),
+                )),
+              ],
+            ),
           ),
-        ),
+        const SizedBox(height: 16),
+
+        // 4. Pet Safety Alert -- real per-food verdict, not a blanket
+        // "safe in moderation" claim. Some produce (grapes, onions, garlic,
+        // unripe tomatoes, etc.) is genuinely toxic to dogs/cats.
+        if (result.petSafetyNote.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: (result.petSafe ? AppColors.neonGreen : AppColors.neonRed).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: (result.petSafe ? AppColors.neonGreen : AppColors.neonRed).withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  result.petSafe ? Icons.pets : Icons.warning_amber_rounded,
+                  color: result.petSafe ? AppColors.neonGreen : AppColors.neonRed,
+                  size: 24,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result.petSafe ? 'Safe for Pets' : 'Toxic to Pets',
+                        style: AppTextStyles.heading(
+                          size: 14,
+                          color: result.petSafe ? AppColors.neonGreen : AppColors.neonRed,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(result.petSafetyNote, style: AppTextStyles.body(size: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // 5. Kitchen Wash Protocol -- real, item-specific steps from the AI.
+        if (result.tips.isNotEmpty)
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Kitchen Prep Protocol', style: AppTextStyles.heading(size: 14)),
+                const SizedBox(height: 12),
+                ...result.tips.asMap().entries.map(
+                      (entry) => _stepItem(entry.key + 1, entry.value),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 24),
         _buildResetButton(),
       ],
@@ -662,33 +704,6 @@ class _QuickCheckScreenState extends State<QuickCheckScreen> {
           const SizedBox(height: 6),
           Text(value, style: AppTextStyles.heading(size: 13, color: color)),
           Text(label, style: AppTextStyles.body(size: 9, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-
-  Widget _residueBar(String label, double val, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: AppTextStyles.body(size: 11)),
-              Text('${(val * 100).toInt()}%', style: AppTextStyles.label(size: 10)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: val,
-              minHeight: 4,
-              backgroundColor: AppColors.surfaceMuted,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
         ],
       ),
     );

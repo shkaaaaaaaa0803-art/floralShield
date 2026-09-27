@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
+enum ApplicationMethod { drone, tractor }
+
 class DosageCalculatorScreen extends StatefulWidget {
   final String diseaseName;
   final bool isHealthy;
@@ -16,33 +18,65 @@ class DosageCalculatorScreen extends StatefulWidget {
 }
 
 class _DosageCalculatorScreenState extends State<DosageCalculatorScreen> {
-  final TextEditingController _acreController = TextEditingController(text: '1.0');
+  final TextEditingController _acreController = TextEditingController(text: '1');
   double _acres = 1.0;
+  ApplicationMethod _method = ApplicationMethod.tractor;
 
+  // A standard drone tank payload used only to estimate sorties/flight
+  // time for the Mission Logistics card -- actual drone models vary.
+  static const double _droneTankLiters = 20.0;
+  static const double _avgSortieMinutes = 12.0; // per full tank, incl. turnaround
+
+  // WALES tank-mixing order: Water, Adjuvant/wettable-powder pre-mix,
+  // Little-by-little, Ensure agitation, Spray promptly.
+  final List<bool> _checklist = List.filled(5, false);
+
+  // Simple reference dosage rates (per acre) for common fungicide/pesticide
+  // categories. This is a general-purpose estimate, not a substitute for
+  // product label instructions or expert advice. `activeIngredientPercent`
+  // reflects a typical commercial formulation strength so the "active
+  // ingredient weight" figure is a real calculation, not an invented one --
+  // still always verify against the actual product label.
   final Map<String, _DosageInfo> _dosageTable = {
     'fungal': _DosageInfo(
-      productName: 'Copper Oxychloride 50% WP',
-      mlPerAcre: 600,
-      waterLitersPerAcre: 200,
-      activeIngredient: 'Copper Oxychloride',
+      productName: 'Copper Oxychloride (Fungicide)',
+      fracGroup: 'FRAC M01',
+      mlPerAcreTractor: 600,
+      waterLitersPerAcreTractor: 200,
+      waterLitersPerAcreDrone: 25,
+      activeIngredientPercent: 50,
+      phiDaysRange: '7-10 days',
+      reiHours: '24 hours',
     ),
     'bacterial': _DosageInfo(
-      productName: 'Streptomycin Sulphate 9% SP',
-      mlPerAcre: 200,
-      waterLitersPerAcre: 200,
-      activeIngredient: 'Streptomycin',
+      productName: 'Streptomycin Sulphate (Bactericide)',
+      fracGroup: 'FRAC 25',
+      mlPerAcreTractor: 200,
+      waterLitersPerAcreTractor: 200,
+      waterLitersPerAcreDrone: 20,
+      activeIngredientPercent: 90,
+      phiDaysRange: '3-5 days',
+      reiHours: '12 hours',
     ),
     'pest': _DosageInfo(
-      productName: 'Neem Oil / Azadirachtin 1500ppm',
-      mlPerAcre: 400,
-      waterLitersPerAcre: 200,
-      activeIngredient: 'Azadirachtin',
+      productName: 'Imidacloprid (Insecticide)',
+      fracGroup: 'IRAC 4A',
+      mlPerAcreTractor: 400,
+      waterLitersPerAcreTractor: 200,
+      waterLitersPerAcreDrone: 20,
+      activeIngredientPercent: 17.8,
+      phiDaysRange: '5-7 days',
+      reiHours: '12 hours',
     ),
     'default': _DosageInfo(
-      productName: 'Broad-Spectrum Bio-Fungicide',
-      mlPerAcre: 500,
-      waterLitersPerAcre: 200,
-      activeIngredient: 'Bacillus subtilis',
+      productName: 'General Purpose Fungicide',
+      fracGroup: 'FRAC M-group',
+      mlPerAcreTractor: 500,
+      waterLitersPerAcreTractor: 200,
+      waterLitersPerAcreDrone: 25,
+      activeIngredientPercent: 50,
+      phiDaysRange: '7-10 days',
+      reiHours: '24 hours',
     ),
   };
 
@@ -64,327 +98,411 @@ class _DosageCalculatorScreenState extends State<DosageCalculatorScreen> {
     });
   }
 
+  void _comingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature — coming soon'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dosage = _selectedDosage;
-    final totalMl = dosage.mlPerAcre * _acres;
-    final totalWater = dosage.waterLitersPerAcre * _acres;
+    final bool isDrone = _method == ApplicationMethod.drone;
+
+    final double waterPerAcre = isDrone ? dosage.waterLitersPerAcreDrone : dosage.waterLitersPerAcreTractor;
+    final double totalMl = dosage.mlPerAcreTractor * _acres; // product volume doesn't change with carrier method
+    final double totalWater = waterPerAcre * _acres;
+    final double activeIngredientGrams = totalMl * (dosage.activeIngredientPercent / 100);
+
+    final double sorties = isDrone && totalWater > 0 ? (totalWater / _droneTankLiters).ceilToDouble() : 0;
+    final double flightMinutes = sorties * _avgSortieMinutes;
 
     return Scaffold(
       body: Container(
         decoration: AppTheme.backgroundGradient,
         child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(width: 14),
+                    Text('Dosage & Spray Planner', style: AppTextStyles.heading(size: 18)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                if (widget.isHealthy)
+                  GlassCard(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: AppColors.neonGreen),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'This plant is healthy — no treatment dosage needed. Showing a general-purpose reference calculation.',
+                            style: AppTextStyles.body(size: 13, color: AppColors.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  GlassCard(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.bug_report_outlined, color: AppColors.neonAmber),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Diagnosed condition', style: AppTextStyles.body(size: 11, color: AppColors.textSecondary)),
+                              const SizedBox(height: 2),
+                              Text(widget.diseaseName, style: AppTextStyles.heading(size: 15)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+
+                // Field size input
+                Text('Field Size (acres)', style: AppTextStyles.body(size: 13, color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                GlassCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: TextField(
+                    controller: _acreController,
+                    onChanged: _updateAcres,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: AppTextStyles.heading(size: 20),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'e.g. 1.5',
+                      suffixText: 'acres',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Application method toggle
+                Text('Application Platform', style: AppTextStyles.body(size: 13, color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _methodTile(
+                        icon: Icons.airplanemode_active,
+                        label: 'Drone (ULV)',
+                        active: isDrone,
+                        onTap: () => setState(() => _method = ApplicationMethod.drone),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _methodTile(
+                        icon: Icons.agriculture,
+                        label: 'Tractor / Knapsack',
+                        active: !isDrone,
+                        onTap: () => setState(() => _method = ApplicationMethod.tractor),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                Text('Recommended Application', style: AppTextStyles.heading(size: 15)),
+                const SizedBox(height: 12),
+
+                GlassCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Tank-Mix Recipe Card (Mockup #6)
-                      _buildRecipeCard(dosage),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text(dosage.productName, style: AppTextStyles.heading(size: 15))),
+                          NeonPill(text: dosage.fracGroup, color: AppColors.accentTeal),
+                        ],
+                      ),
                       const SizedBox(height: 16),
-
-                      // 2. Dosage Math Grid
-                      _buildMathGrid(dosage, totalMl, totalWater),
-                      const SizedBox(height: 20),
-
-                      // 3. Tank-Mixing SOP Checklist
-                      _buildSOPChecklist(),
-                      const SizedBox(height: 20),
-
-                      // 4. UAV Mission Planner / Drone Flight Card
-                      _buildUAVMissionCard(),
-                      const SizedBox(height: 20),
-
-                      // 5. Compliance & PPE info
-                      _buildComplianceFooter(),
+                      _resultRow('Product quantity', '${totalMl.toStringAsFixed(0)} ml', AppColors.neonGreen),
+                      const SizedBox(height: 10),
+                      _resultRow('Water quantity', '${totalWater.toStringAsFixed(0)} liters', AppColors.textPrimary),
+                      const SizedBox(height: 10),
+                      _resultRow(
+                        'Active ingredient (~${dosage.activeIngredientPercent}%)',
+                        '${activeIngredientGrams.toStringAsFixed(1)} g',
+                        AppColors.accentTeal,
+                      ),
+                      const SizedBox(height: 10),
+                      _resultRow(
+                        'Per acre rate',
+                        '${dosage.mlPerAcreTractor.toStringAsFixed(0)} ml / ${waterPerAcre.toStringAsFixed(0)} L',
+                        AppColors.textSecondary,
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+                const SizedBox(height: 16),
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Icon(Icons.arrow_back, color: AppColors.textPrimary, size: 20),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Spray Mission Planner', style: AppTextStyles.heading(size: 18)),
-              Text('Professional precision calculations', style: AppTextStyles.body(size: 11, color: AppColors.textSecondary)),
-            ],
-          ),
-          const Spacer(),
-          const Icon(Icons.share_outlined, color: AppColors.textPrimary, size: 22),
-        ],
-      ),
-    );
-  }
+                // Mission logistics -- drone only
+                if (isDrone && totalWater > 0)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.neonGreen.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.neonGreen.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flight_takeoff, color: AppColors.neonGreen, size: 26),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Mission Logistics', style: AppTextStyles.heading(size: 14, color: AppColors.neonGreen)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${sorties.toStringAsFixed(0)} sortie${sorties == 1 ? '' : 's'} required '
+                                    '(${_droneTankLiters.toStringAsFixed(0)}L tank) · '
+                                    'Est. flight time ~${flightMinutes.toStringAsFixed(0)} min',
+                                style: AppTextStyles.body(size: 12, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (isDrone && totalWater > 0) const SizedBox(height: 16),
 
-  Widget _buildRecipeCard(_DosageInfo dosage) {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.neonGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                // Tank-mixing safety checklist
+                Text('Tank-Mixing Checklist (WALES Method)', style: AppTextStyles.heading(size: 15)),
+                const SizedBox(height: 12),
+                GlassCard(
+                  child: Column(
+                    children: [
+                      _checklistItem(0, 'Water — fill tank to 50% with clean water, verify pH 6.0-6.5.'),
+                      _checklistItem(1, 'Adjuvant / wettable-powder pre-mix in a bucket of water first.'),
+                      _checklistItem(2, 'Little by little — add pre-mix slowly to the tank with agitation running.'),
+                      _checklistItem(3, 'Ensure agitation continues while topping up to full volume.'),
+                      _checklistItem(4, 'Spray promptly — apply within the SOP time window, don\'t let mix stand.'),
+                    ],
+                  ),
                 ),
-                child: const Icon(Icons.science_outlined, color: AppColors.neonGreen, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 16),
+
+                // PPE & regulatory intervals -- explicitly framed as general
+                // guidance, not exact per-product regulatory data.
+                GlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Safety Intervals & PPE', style: AppTextStyles.heading(size: 14)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Typical range for this product category — always confirm the exact PHI/REI on your specific product label.',
+                        style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _intervalStat('Pre-Harvest Interval', dosage.phiDaysRange, Icons.event_available_outlined)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _intervalStat('Worker Re-Entry', dosage.reiHours, Icons.timer_outlined)),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: const [
+                          _PpeChip(icon: Icons.back_hand_outlined, label: 'Nitrile gloves'),
+                          _PpeChip(icon: Icons.masks_outlined, label: 'Respirator mask'),
+                          _PpeChip(icon: Icons.remove_red_eye_outlined, label: 'Safety goggles'),
+                          _PpeChip(icon: Icons.checkroom_outlined, label: 'Full-sleeve coveralls'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                GlassCard(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: AppColors.neonAmber, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'This is a general reference estimate. Always confirm exact dosage, PHI/REI, and PPE with the product label or a local agriculture expert before application.',
+                          style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
                   children: [
-                    Text('Tank-Mix Component', style: AppTextStyles.label(size: 10)),
-                    Text(dosage.productName, style: AppTextStyles.heading(size: 16)),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _comingSoon('Drone flight path export (.KML)'),
+                        icon: const Icon(Icons.route_outlined, size: 18),
+                        label: const Text('Export Flight Path'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _comingSoon('Application record PDF'),
+                        icon: const Icon(Icons.description_outlined, size: 18),
+                        label: const Text('Save Record'),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _recipeMeta('Active ingredient', dosage.activeIngredient),
-              _recipeMeta('Target', widget.isHealthy ? 'Maintenance' : widget.diseaseName),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _recipeMeta(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.body(size: 10, color: AppColors.textSecondary)),
-        Text(value, style: AppTextStyles.body(size: 13, weight: FontWeight.w600)),
-      ],
-    );
-  }
-
-  Widget _buildMathGrid(_DosageInfo dosage, double totalMl, double totalWater) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Dosage Math Parameters', style: AppTextStyles.heading(size: 15)),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.8,
-          children: [
-            _mathTile('Coverage Area', '${_acres.toStringAsFixed(1)} ac', Icons.grid_view_outlined, AppColors.accentTeal, isEditable: true),
-            _mathTile('Carrier Volume', '${dosage.waterLitersPerAcre} L/ac', Icons.opacity_outlined, AppColors.accentTeal),
-            _mathTile('Total Water', '${totalWater.toStringAsFixed(0)} Liters', Icons.water_drop_outlined, AppColors.neonGreen),
-            _mathTile('Active Chemical', '${totalMl.toStringAsFixed(0)} ml', Icons.biotech_outlined, AppColors.neonAmber),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _mathTile(String label, String value, IconData icon, Color color, {bool isEditable = false}) {
-    return GestureDetector(
-      onTap: isEditable ? _showAreaInput : null,
-      child: GlassCard(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: 6),
-                Text(label, style: AppTextStyles.label(size: 9)),
-                if (isEditable) const Icon(Icons.edit, size: 10, color: AppColors.neonGreen),
               ],
             ),
-            const Spacer(),
-            Text(value, style: AppTextStyles.heading(size: 16, color: color)),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  void _showAreaInput() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Edit Coverage Area', style: AppTextStyles.heading(size: 16)),
-        content: TextField(
-          controller: _acreController,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(suffixText: 'Acres'),
-          autofocus: true,
+  Widget _methodTile({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? AppColors.neonGreen : AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: active ? AppColors.neonGreen : AppColors.border),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-          ElevatedButton(
-            onPressed: () {
-              _updateAcres(_acreController.text);
-              Navigator.pop(ctx);
-            },
-            child: const Text('UPDATE'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSOPChecklist() {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Tank-Mixing SOP Checklist', style: AppTextStyles.heading(size: 14)),
-          const SizedBox(height: 12),
-          _checkItem('Half-fill spray tank with clean water.', true),
-          _checkItem('Add prescribed chemical while agitating.', true),
-          _checkItem('Top up with water to final volume.', false),
-          _checkItem('Verify pH levels (optimal: 5.5 - 6.5).', false),
-        ],
-      ),
-    );
-  }
-
-  Widget _checkItem(String text, bool done) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, 
-               size: 18, color: done ? AppColors.neonGreen : AppColors.border),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text, style: AppTextStyles.body(size: 12))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUAVMissionCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.textPrimary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.flight_takeoff, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Text('UAV Mission Parameters', style: AppTextStyles.heading(size: 14, color: Colors.white)),
-              const Spacer(),
-              const Icon(Icons.info_outline, color: Colors.white54, size: 16),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _uavStat('FLIGHT HEIGHT', '3.5m'),
-              _uavStat('SWATH WIDTH', '4.2m'),
-              _uavStat('SPEED', '5.0 m/s'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white24),
-              ),
-              child: const Text('EXPORT MISSION (KML)'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _uavStat(String label, String val) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.label(size: 8, color: Colors.white54)),
-        const SizedBox(height: 2),
-        Text(val, style: AppTextStyles.body(size: 14, color: Colors.white, weight: FontWeight.w700)),
-      ],
-    );
-  }
-
-  Widget _buildComplianceFooter() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Regulatory & PPE Compliance', style: AppTextStyles.heading(size: 14)),
-        const SizedBox(height: 10),
-        Row(
+        child: Column(
           children: [
-            _ppeIcon(Icons.masks_outlined, 'Respirator'),
-            _ppeIcon(Icons.pan_tool_outlined, 'Gloves'),
-            _ppeIcon(Icons.visibility_outlined, 'Eyewear'),
-            _ppeIcon(Icons.checkroom_outlined, 'Coveralls'),
+            Icon(icon, size: 20, color: active ? Colors.white : AppColors.textSecondary),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body(
+                size: 11,
+                weight: FontWeight.w600,
+                color: active ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 12),
-        Text(
-          'EPA Reg No: 45002-12. Follow all label directions. Wash thoroughly after handling.',
-          style: AppTextStyles.body(size: 10, color: AppColors.textSecondary),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _ppeIcon(IconData icon, String label) {
-    return Expanded(
+  Widget _checklistItem(int index, String text) {
+    final checked = _checklist[index];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: GestureDetector(
+        onTap: () => setState(() => _checklist[index] = !_checklist[index]),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              checked ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 20,
+              color: checked ? AppColors.neonGreen : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  text,
+                  style: AppTextStyles.body(
+                    size: 13,
+                    color: checked ? AppColors.textSecondary : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _intervalStat(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 24, color: AppColors.textPrimary),
-          const SizedBox(height: 4),
-          Text(label, style: AppTextStyles.label(size: 7)),
+          Icon(icon, size: 16, color: AppColors.accentTeal),
+          const SizedBox(height: 6),
+          Text(value, style: AppTextStyles.heading(size: 13)),
+          Text(label, style: AppTextStyles.body(size: 9, color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultRow(String label, String value, Color valueColor) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: AppTextStyles.body(size: 13, color: AppColors.textSecondary))),
+        Text(value, style: AppTextStyles.body(size: 15, weight: FontWeight.w700, color: valueColor)),
+      ],
+    );
+  }
+}
+
+class _PpeChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PpeChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Text(label, style: AppTextStyles.body(size: 11, weight: FontWeight.w600)),
         ],
       ),
     );
@@ -393,14 +511,22 @@ class _DosageCalculatorScreenState extends State<DosageCalculatorScreen> {
 
 class _DosageInfo {
   final String productName;
-  final String activeIngredient;
-  final double mlPerAcre;
-  final double waterLitersPerAcre;
+  final String fracGroup;
+  final double mlPerAcreTractor;
+  final double waterLitersPerAcreTractor;
+  final double waterLitersPerAcreDrone;
+  final double activeIngredientPercent;
+  final String phiDaysRange;
+  final String reiHours;
 
   _DosageInfo({
     required this.productName,
-    required this.activeIngredient,
-    required this.mlPerAcre,
-    required this.waterLitersPerAcre,
+    required this.fracGroup,
+    required this.mlPerAcreTractor,
+    required this.waterLitersPerAcreTractor,
+    required this.waterLitersPerAcreDrone,
+    required this.activeIngredientPercent,
+    required this.phiDaysRange,
+    required this.reiHours,
   });
 }

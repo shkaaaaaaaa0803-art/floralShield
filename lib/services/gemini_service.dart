@@ -131,6 +131,24 @@ class GeminiService {
         ),
         'details': Schema.array(items: Schema.string()),
         'tips': Schema.array(items: Schema.string()),
+        'stat_labels': Schema.array(
+          items: Schema.string(),
+          description:
+          "Optional. Up to 3 short (1-3 word) labels for a compact stat row, e.g. ['Pesticide Residue', 'Surface Coating', 'Est. Shelf Life']. Leave empty if not applicable.",
+        ),
+        'stat_values': Schema.array(
+          items: Schema.string(),
+          description:
+          "Optional. Up to 3 short (1-3 word) values matching stat_labels in the same order, e.g. ['Low', 'Natural wax', '3-4 days']. Leave empty if not applicable.",
+        ),
+        'pet_safe': Schema.boolean(
+          description:
+          "Optional, only meaningful for food/produce items. True if this specific food is safe for dogs/cats to eat in small amounts. False if it is a known pet toxin (e.g. grapes, raisins, onions, garlic, chocolate, avocado for birds, xylitol). Default true if not applicable.",
+        ),
+        'pet_safety_note': Schema.string(
+          description:
+          "Optional. A short, specific, factually accurate note about pet safety for this exact food item -- not a generic statement. Leave empty if not applicable.",
+        ),
       },
       requiredProperties: [
         'subject_name',
@@ -441,6 +459,18 @@ unchanged. Respond ONLY with valid JSON, no extra text.
 You are a professional food quality inspector specializing in fresh produce (fruits and vegetables).
 Look at the image and assess the freshness of the fruit or vegetable shown.
 If the image does not show a fruit or vegetable, set is_valid_subject to false and identify what the image actually shows in subject_name instead.
+
+Fill the fields as follows:
+- status_label: a short freshness category, e.g. "Fresh", "Ripe", "Overripe", "Spoiled".
+- score_percent: an overall freshness/quality score from 0-100 based on visible color, firmness, blemishes, and any mold or decay.
+- stat_labels / stat_values: exactly 3 parallel short badges, in this order:
+  1. label "Visual Pesticide Risk", value a short visual-estimate risk level such as "Low", "Moderate", or "High" (this is a visual estimate only, not a lab test -- base it on visible residue, spotting, or waxy build-up).
+  2. label "Surface Coating", value a short description such as "Natural wax", "Light coating", "None visible", or "Heavy coating".
+  3. label "Est. Shelf Life", value a short estimate such as "5-7 days", "2-3 days", or "Use today".
+- details: 2-4 specific visual freshness observations (ripeness cues, blemishes, discoloration, firmness cues, any residue or coating noted). Do not invent exact lab measurements (like precise ppm numbers) -- keep observations visual and qualitative.
+- tips: 3-4 ordered kitchen prep/wash steps appropriate for this specific item (e.g. produce with a waxy skin needs a different wash step than soft berries).
+- pet_safe: true if this specific food is safe for dogs/cats to eat in small amounts; false if it is a known pet toxin (grapes/raisins, onions, garlic, chives, avocado, chocolate, xylitol, unripe tomatoes/potatoes (solanine), etc.). Be accurate and specific to the actual food identified -- do not default to true without checking.
+- pet_safety_note: one short, specific, factually accurate sentence about pet safety for this exact food (not a generic "safe in moderation" statement copied for every food).
 ''';
 
       final List<Content> content = [
