@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/scan_provider.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -37,8 +39,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!granted && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Notification permission denied'),
-            backgroundColor: AppColors.bgDark2,
+            content: const Text('Notification permission denied', style: TextStyle(color: Colors.white)),
+            backgroundColor: AppColors.textPrimary,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -67,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgDark2,
+        backgroundColor: AppColors.bgDark,
         title: Text('Clear all scan history?', style: AppTextStyles.heading(size: 16)),
         content: Text(
           'This will permanently delete all your saved scans. This action cannot be undone.',
@@ -85,8 +87,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: const Text('History cleared'),
-                    backgroundColor: AppColors.bgDark2,
+                    content: const Text('History cleared', style: TextStyle(color: Colors.white)),
+                    backgroundColor: AppColors.textPrimary,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -119,6 +121,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 14),
                     Text('Settings', style: AppTextStyles.heading(size: 18)),
                   ],
+                ),
+                const SizedBox(height: 24),
+
+                Text('ACCOUNT', style: AppTextStyles.label(size: 11)),
+                const SizedBox(height: 10),
+                Consumer<AuthProvider>(
+                  builder: (context, auth, _) {
+                    if (auth.isLoggedIn) {
+                      return GlassCard(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.neonGreen.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.person_outline, color: AppColors.neonGreen, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Signed in — syncing scans', style: AppTextStyles.body(size: 14, weight: FontWeight.w600)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    auth.email ?? '',
+                                    style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                await auth.signOut();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Signed out'), behavior: SnackBarBehavior.floating),
+                                  );
+                                }
+                              },
+                              child: Text('Sign Out', style: AppTextStyles.body(size: 12, color: AppColors.neonRed, weight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      ),
+                      child: GlassCard(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.accentTeal.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.login, color: AppColors.accentTeal, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Sign In / Create Account', style: AppTextStyles.body(size: 14, weight: FontWeight.w600)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Sync your scan history across devices',
+                                    style: AppTextStyles.body(size: 11, color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 18),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
 
@@ -197,7 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _infoRow('App Name', 'PlantIQ'),
+                      _infoRow('App Name', 'FloraShield AI'),
                       const SizedBox(height: 12),
                       _infoRow('Version', _version.isEmpty ? 'Loading...' : _version),
                       const SizedBox(height: 12),

@@ -40,7 +40,19 @@ class PlantDiseaseApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => ScanProvider()),
+        // ScanProvider needs to know the current signed-in user so it can
+        // sync scan history to/from Firestore. ChangeNotifierProxyProvider
+        // re-runs `update` every time AuthProvider notifies listeners
+        // (sign-in, sign-out, session expiry), which is what actually
+        // triggers ScanProvider.setUserId() - a plain ChangeNotifierProvider
+        // for ScanProvider on its own would never learn about auth changes.
+        ChangeNotifierProxyProvider<AuthProvider, ScanProvider>(
+          create: (_) => ScanProvider(),
+          update: (_, auth, scanProvider) {
+            scanProvider!.setUserId(auth.uid);
+            return scanProvider;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => WeatherProvider()),
       ],
       child: MaterialApp(

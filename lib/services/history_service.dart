@@ -14,7 +14,7 @@ class HistoryService {
     return Hive.box<ScanHistoryModel>(boxName);
   }
 
-  Future<void> saveScan({
+  Future<ScanHistoryModel> saveScan({
     required String imagePath,
     required DiagnosisModel diagnosis,
   }) async {
@@ -34,6 +34,7 @@ class HistoryService {
     );
 
     await box.add(entry);
+    return entry;
   }
 
   Future<List<ScanHistoryModel>> getAllScans() async {
@@ -42,6 +43,18 @@ class HistoryService {
     // Most recent first
     scans.sort((a, b) => b.scannedAt.compareTo(a.scannedAt));
     return scans;
+  }
+
+  /// Saves a scan that already has its own id - used when pulling a scan
+  /// down from Firestore (saveScan() above always mints a fresh id, which
+  /// is correct for brand-new local scans but wrong here: we want the
+  /// cloud copy's id preserved so re-syncing doesn't create duplicates).
+  /// Keyed by the scan's own id string, unlike saveScan()'s auto-increment
+  /// key - Hive allows mixed key types in the same box, so this is safe
+  /// alongside existing entries.
+  Future<void> saveExistingScan(ScanHistoryModel scan) async {
+    final box = await _openBox();
+    await box.put(scan.id, scan);
   }
 
   Future<void> deleteScan(ScanHistoryModel scan) async {
